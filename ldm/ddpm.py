@@ -41,6 +41,8 @@ class DDPM(nn.Module):
                  v_posterior=0.,  # weight for choosing posterior variance as sigma = (1-v) * beta_tilde + v * beta
                  l_simple_weight=1.,
                  parameterization="x0",  # all assuming fixed variance schedules
+                 sample_timesteps=None,
+                 sample_timestep_mode="uniform",
                  ):
         super().__init__()
         assert parameterization in ["eps", "x0"], 'currently only supporting "eps" and "x0"'
@@ -55,6 +57,8 @@ class DDPM(nn.Module):
 
         self.v_posterior = v_posterior
         self.l_simple_weight = l_simple_weight
+        self.sample_timesteps = sample_timesteps
+        self.sample_timestep_mode = sample_timestep_mode
 
         self.register_schedule(given_betas=given_betas, beta_schedule=beta_schedule, timesteps=timesteps,
                                linear_start=linear_start, linear_end=linear_end, cosine_s=cosine_s)
@@ -192,6 +196,33 @@ class DDPM(nn.Module):
 
         return model_out, target
 
+    def get_sampling_timesteps(self):
+        if self.sample_timesteps is None:
+            return list(reversed(range(0, self.num_timesteps)))
+
+        n_steps = int(self.sample_timesteps)
+        if n_steps < 0:
+            raise ValueError(f"sample_timesteps must be >= 0, got {n_steps}")
+        if n_steps == 0:
+            return []
+        if n_steps >= self.num_timesteps:
+            return list(reversed(range(0, self.num_timesteps)))
+
+        if self.sample_timestep_mode != "uniform":
+            raise ValueError(f"Unknown sample_timestep_mode: {self.sample_timestep_mode}")
+        if n_steps == 1:
+            return [0]
+
+        steps = np.linspace(self.num_timesteps - 1, 0, n_steps)
+        steps = [int(round(step)) for step in steps]
+        deduped = []
+        for step in steps:
+            if step not in deduped:
+                deduped.append(step)
+        if deduped[-1] != 0:
+            deduped[-1] = 0
+        return deduped
+
     def forward(self, img,x=None):
         # b, c, h, w, device, img_size, = *x.shape, x.device, self.image_size
         # assert h == img_size and w == img_size, f'height and width of image must be {img_size}'
@@ -215,10 +246,13 @@ class DDPM(nn.Module):
             x_noisy = torch.randn(shape, device=device)
             c = self.condition(img)
             IPR = x_noisy
-            for i in reversed(range(0, self.num_timesteps)):
+            sampling_timesteps = self.get_sampling_timesteps()
+            if not getattr(self, "_printed_sampling_timesteps", False):
+                print(f"DDPM inference sampling timesteps: {sampling_timesteps}")
+                self._printed_sampling_timesteps = True
+            for i in sampling_timesteps:
                 IPR, _ = self.p_sample(IPR, torch.full((b,), i,  device=device, dtype=torch.long), c,
                                 clip_denoised=self.clip_denoised)
             return IPR
-
 
 

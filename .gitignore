@@ -1,0 +1,39 @@
+# Python/cache artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local environments
+.venv/
+venv/
+.conda/
+
+# Raw and converted MRI data
+data/
+mri_data_complex/
+*.h5
+*.hdf5
+*.dcm
+
+# Training/evaluation outputs
+experiments/
+results/
+tb_logger/
+logs/
+*.log
+*.out
+*.err
+*.pth
+*.state
+events.out.tfevents.*
+
+# Local editor/system noise
+.DS_Store
+.idea/
+.vscode/
+
+# Local scratch files from dataset inspection / one-off experiments
+scripts/headers.py
+scripts/preprocess_fastmri_dicom.py
+scripts/preprocess_fastmri_dicom_simple.py
+options/test_pd_fs_example_meta.txt

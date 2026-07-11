@@ -158,8 +158,9 @@ def train_pipeline(root_path):
     # logger_j = [True] * len(groups)
     # training
     logger.info(f'Start training from epoch: {start_epoch}, iter: {current_iter}')
-    for val_loader in val_loaders:
-        model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
+    if opt.get('val') is not None and not opt['val'].get('skip_initial', False):
+        for val_loader in val_loaders:
+            model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
     data_timer, iter_timer = AvgTimer(), AvgTimer()
     start_time = time.time()
 

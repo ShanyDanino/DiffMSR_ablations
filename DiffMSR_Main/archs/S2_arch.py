@@ -704,7 +704,9 @@ class DiffMSR_S2(nn.Module):
         n_denoise_res = 1, 
         linear_start= 0.1,
         linear_end= 0.99, 
-        timesteps = 4 ):
+        timesteps = 4,
+        sample_timesteps = None,
+        sample_timestep_mode = "uniform" ):
         super(DiffMSR_S2, self).__init__()
 
         # Generator
@@ -725,7 +727,8 @@ class DiffMSR_S2(nn.Module):
         self.denoise= denoise(n_feats=64, n_denoise_res=n_denoise_res,timesteps=timesteps)
 
         self.diffusion = DDPM(denoise=self.denoise, condition=self.condition ,n_feats=64,linear_start= linear_start,
-  linear_end= linear_end, timesteps = timesteps)
+  linear_end= linear_end, timesteps = timesteps, sample_timesteps=sample_timesteps,
+  sample_timestep_mode=sample_timestep_mode)
 
     def forward(self, img, ref, IPRS1=None):
         if self.training:
