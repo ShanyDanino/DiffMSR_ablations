@@ -96,6 +96,15 @@ Shared Stage 1 used for the reported timestep ablation:
 ```text
 experiments/pd_fs_stage1_x4/models/net_g_330000.pth
 ```
+Or from scratch, train a shared 256-dimensional Stage 1 once:
+
+```bash
+DATA_ROOT="$DATA_ROOT" STAGE=1 PRIOR_DIM=256 TOTAL_ITER=100000 \
+  RUN_NAME=pd_fs_stage1_x4_prior256_100k RUN_TAG=prior256_stage1_100k \
+  GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" bash scripts/run_diffmsr_nohup.sh
+
+export STAGE1_CKPT=experiments/pd_fs_stage1_x4_prior256_100k/models/net_g_latest.pth
+```
 
 Exact Stage 2 YAMLs:
 
@@ -110,7 +119,7 @@ options/pd_fs_ablation/train/timesteps_steps8_stage2_100k.yml
 Wrapper command to regenerate/run the same experiment family:
 
 ```bash
-export STAGE1_CKPT=experiments/pd_fs_stage1_x4/models/net_g_330000.pth
+export STAGE1_CKPT=experiments/pd_fs_stage1_x4/models/net_g_latest.pth
 
 for steps in 1 2 4 6 8; do
   STAGE1_CKPT="$STAGE1_CKPT" \
