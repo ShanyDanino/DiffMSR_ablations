@@ -93,7 +93,7 @@ class DiffMSRS2Model(SRModel):
         if self.opt['dist']:
             self.model_Es1 = self.net_g_S1.module.E
         else:
-            self.model_Es1 = self.net_g_S1.E
+            self.model_Es1 = self.net_g_S1.module.E if hasattr(self.net_g_S1, 'module') else self.net_g_S1.E
         self.pixel_unshuffle = nn.PixelUnshuffle(4)
         self.encoder_iter = opt["train"]["encoder_iter"]
         self.lr_encoder = opt["train"]["lr_encoder"]

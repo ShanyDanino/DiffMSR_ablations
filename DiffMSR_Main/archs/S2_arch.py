@@ -69,25 +69,28 @@ class LayerNorm(nn.Module):
 
 
 class PG_FeedForward(nn.Module):
-    def __init__(self, dim, ffn_expansion_factor, bias):
+    def __init__(self, dim, ffn_expansion_factor, bias, domain_mode, prior_dim=256):
         super(PG_FeedForward, self).__init__()
+        self.domain_mode = domain_mode
+        self.prior_dim = prior_dim
 
         hidden_features = int(dim*ffn_expansion_factor)
 
         self.project_in = nn.Conv2d(dim, hidden_features*2, kernel_size=1, bias=bias)
-
         self.dwconv = nn.Conv2d(hidden_features*2, hidden_features*2, kernel_size=3, stride=1, padding=1, groups=hidden_features*2, bias=bias)
-
         self.project_out = nn.Conv2d(hidden_features, dim, kernel_size=1, bias=bias)
 
+        # Dynamic kernel projection using your prior_dim
         self.kernel = nn.Sequential(
-            nn.Linear(256, dim*2, bias=False),
+            nn.Linear(self.prior_dim, dim*2, bias=False),
         )
-    def forward(self, x,k_v):
-        b,c,h,w = x.shape
-        k_v=self.kernel(k_v).view(-1,c*2,1,1)
-        k_v1,k_v2=k_v.chunk(2, dim=1)
-        x = x*k_v1+k_v2  
+
+    def forward(self, x, k_v):
+        b, c, h, w = x.shape
+        k_v = self.kernel(k_v).view(-1, c*2, 1, 1)
+        k_v1, k_v2 = k_v.chunk(2, dim=1)
+        
+        x = x * k_v1 + k_v2  
         x = self.project_in(x)
         x1, x2 = self.dwconv(x).chunk(2, dim=1)
         x = F.gelu(x1) * x2
@@ -139,7 +142,8 @@ class PL_MSA(nn.Module):
         attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
-    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, 
+                 attn_drop=0., proj_drop=0., prior_dim=256):
 
         super().__init__()
         self.dim = dim
@@ -181,9 +185,12 @@ class PL_MSA(nn.Module):
 
         trunc_normal_(self.relative_position_bias_table, std=.02)
         self.softmax = nn.Softmax(dim=-1)
+        # Dynamic kernel projection
+        self.prior_dim = prior_dim
         self.kernel = nn.Sequential(
-            nn.Linear(256, dim * 2, bias=False),
+            nn.Linear(self.prior_dim, dim * 2, bias=False),
         )
+
         #############################
         ########## ORG ##############
         #############################
@@ -335,7 +342,9 @@ class TransformerBlock(nn.Module):
                  attn_drop=0.,
                  drop_path=0.,
                  act_layer=nn.GELU,
-                 norm_layer=nn.LayerNorm):
+                 norm_layer=nn.LayerNorm,
+                 domain_mode='latent_space',
+                 prior_dim=256,):
         super(TransformerBlock, self).__init__()
 
         self.dim = dim
@@ -358,7 +367,8 @@ class TransformerBlock(nn.Module):
             qkv_bias=qkv_bias,
             qk_scale=qk_scale,
             attn_drop=attn_drop,
-            proj_drop=drop)
+            proj_drop=drop,
+            prior_dim=prior_dim)
 
         if self.shift_size > 0:
             attn_mask = self.calculate_mask(self.input_resolution)
@@ -369,7 +379,7 @@ class TransformerBlock(nn.Module):
         self.norm1 = LayerNorm(dim, LayerNorm_type)
         # self.attn = Attention(dim, num_heads, bias)
         self.norm2 = LayerNorm(dim, LayerNorm_type)
-        self.ffn = PG_FeedForward(dim, ffn_expansion_factor, bias)
+        self.ffn = PG_FeedForward(dim, ffn_expansion_factor, bias, domain_mode, prior_dim=prior_dim)
 
     def calculate_mask(self, x_size):
         # calculate mask for original windows
@@ -502,16 +512,19 @@ class Upsample(nn.Module):
         return self.body(x)
 
 class BasicLayer(nn.Module):
-    def __init__(self, dim, num_heads, ffn_expansion_factor, bias, LayerNorm_type, num_blocks):
+    def __init__(self, dim, num_heads, ffn_expansion_factor, bias, LayerNorm_type, num_blocks, domain_mode, prior_dim):
 
         super().__init__()
 
         # build blocks
-        self.blocks = nn.ModuleList(
-            [TransformerBlock(dim=dim, num_heads=num_heads, ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type) for i in
-             range(num_blocks)])
+        self.blocks = nn.ModuleList([
+            TransformerBlock(dim=dim, num_heads=num_heads, ffn_expansion_factor=ffn_expansion_factor, bias=bias,
+                              LayerNorm_type=LayerNorm_type, domain_mode=domain_mode, prior_dim=prior_dim)
+            for _ in range(num_blocks)
+        ])
 
         self.conv = nn.Conv2d(dim, dim, 3, 1, 1)
+
 
     def forward(self, y):
         x = y[0]
@@ -529,42 +542,53 @@ class PLWformer(nn.Module):
         inp_channels=3, 
         out_channels=3, 
         scale=4,
-        dim = 48,
-        num_blocks = [4,6,6,8], 
-        num_refinement_blocks = 4,
-        heads = [1,2,4,8],
-        ffn_expansion_factor = 2.66,
-        bias = False,
-        LayerNorm_type = 'WithBias',   ## Other option 'BiasFree'
+        dim=48,
+        num_blocks=[4, 6, 6, 8], 
+        num_refinement_blocks=4,
+        heads=[1, 2, 4, 8],
+        ffn_expansion_factor=2.66,
+        bias=False,
+        LayerNorm_type='WithBias',
+        domain_mode='latent_space',
+        prior_dim=256,
         ):
 
         super(PLWformer, self).__init__()
-        self.scale=scale
+        self.scale = scale
+        self.domain_mode = domain_mode
+        self.prior_dim = prior_dim
+
         if self.scale == 2:
-            inp_channels =8
-            self.pixel_unshuffle=nn.PixelUnshuffle(2)
+            inp_channels = 8
+            self.pixel_unshuffle = nn.PixelUnshuffle(2)
         elif self.scale == 1:
-            inp_channels =48
-            self.pixel_unshuffle=nn.PixelUnshuffle(4)
+            inp_channels = 48
+            self.pixel_unshuffle = nn.PixelUnshuffle(4)
         else:
-            inp_channels =2
+            inp_channels = 2
+            
         self.patch_embed = OverlapPatchEmbed(inp_channels, dim * 2)
         self.ref_patch_embed = REFOverlapPatchEmbed(inp_channels, dim * 2)
 
         self.level1 = BasicLayer(dim=dim * 2, num_heads=heads[0], ffn_expansion_factor=ffn_expansion_factor,
-                                 bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[0])
+                                bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[0],
+				                domain_mode=domain_mode, prior_dim=prior_dim)
 
         self.level2 = BasicLayer(dim=dim * 2, num_heads=heads[1], ffn_expansion_factor=ffn_expansion_factor,
-                                 bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[1])
+                                bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[1],
+				                domain_mode=domain_mode, prior_dim=prior_dim)
 
         self.level3 = BasicLayer(dim=dim * 2, num_heads=heads[2], ffn_expansion_factor=ffn_expansion_factor,
-                                 bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[2])
+                                bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[2],
+				                domain_mode=domain_mode, prior_dim=prior_dim)
 
         self.level4 = BasicLayer(dim=dim * 2, num_heads=heads[3], ffn_expansion_factor=ffn_expansion_factor,
-                                 bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[3])
+                                bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[3],
+				                domain_mode=domain_mode, prior_dim=prior_dim)
 
         self.refinement = BasicLayer(dim=dim * 2, num_heads=heads[3], ffn_expansion_factor=ffn_expansion_factor,
-                                     bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[3])
+                                bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[3],
+				                domain_mode=domain_mode, prior_dim=prior_dim)
 
         self.CA = CATL.BasicLayer(dim=dim * 2, num_heads=4, ffn_expansion_factor=ffn_expansion_factor,
                                   bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=2)
@@ -573,8 +597,6 @@ class PLWformer(nn.Module):
                         common.default_conv(int(dim * 2 ** 1), out_channels, 3)]
         self.tail = nn.Sequential(*modules_tail)
 
-
-        
     def forward(self, inp_img, ref, k_v):
         if self.scale == 2:
             feat = self.pixel_unshuffle(inp_img)
@@ -586,7 +608,7 @@ class PLWformer(nn.Module):
         inp_enc_level1 = self.patch_embed(feat)
         ref_enc = self.ref_patch_embed(ref)
 
-        fused_enc = self.CA(inp_enc_level1,ref_enc)
+        fused_enc = self.CA(inp_enc_level1, ref_enc)
 
         out_enc_level1, _ = self.level1([fused_enc, k_v])
         out_enc_level2, _ = self.level2([out_enc_level1, k_v])
@@ -601,9 +623,12 @@ class PLWformer(nn.Module):
 
 
 class PE(nn.Module):
-    def __init__(self,n_feats = 64, n_encoder_res = 6,scale=4):
+    def __init__(self, n_feats=64, n_encoder_res=6, scale=4, domain_mode='latent_space', prior_dim=256):
         super(PE, self).__init__()
-        self.scale=scale
+        self.scale = scale
+        self.domain_mode = domain_mode
+        self.prior_dim = int(prior_dim)
+        
         if scale == 2:
             E1=[nn.Conv2d(8, n_feats, kernel_size=3, padding=1),
                 nn.LeakyReLU(0.1, True)]
@@ -619,6 +644,7 @@ class PE(nn.Module):
                 common.default_conv, n_feats, kernel_size=3
             ) for _ in range(n_encoder_res)
         ]
+        
         E3=[
             nn.Conv2d(n_feats, n_feats * 2, kernel_size=3, padding=1),
             nn.LeakyReLU(0.1, True),
@@ -626,18 +652,28 @@ class PE(nn.Module):
             nn.LeakyReLU(0.1, True),
             nn.Conv2d(n_feats * 2, n_feats * 4, kernel_size=3, padding=1),
             nn.LeakyReLU(0.1, True),
-            nn.AdaptiveAvgPool2d(1),
         ]
+        
+        # Conditionally add the spatial crush for the latent vector
+        if self.domain_mode == 'latent_space':
+            E3.append(nn.AdaptiveAvgPool2d(1))
+            
         E=E1+E2+E3
         self.E = nn.Sequential(
             *E
         )
-        self.mlp = nn.Sequential(
-            nn.Linear(n_feats * 4, n_feats * 4),
-            nn.LeakyReLU(0.1, True),
-            nn.Linear(n_feats * 4, n_feats * 4),
-            nn.LeakyReLU(0.1, True)
-        )
+        
+        # Path B Projection logic
+        if self.domain_mode == 'latent_space':
+            self.mlp = nn.Sequential(
+                nn.Linear(n_feats * 4, self.prior_dim),
+                nn.LeakyReLU(0.1, True),
+                nn.Linear(self.prior_dim, self.prior_dim),
+                nn.LeakyReLU(0.1, True)
+            )
+        else:
+            self.mlp = nn.Identity()
+            
         self.pixel_unshuffle = nn.PixelUnshuffle(4)
         self.pixel_unshufflev2 = nn.PixelUnshuffle(2)
 
@@ -648,7 +684,13 @@ class PE(nn.Module):
             feat = self.pixel_unshuffle(x)
         else:
             feat = x  
-        fea = self.E(feat).squeeze(-1).squeeze(-1)
+            
+        fea = self.E(feat)
+        
+        # Only squeeze the spatial dimensions if we are in latent space
+        if self.domain_mode == 'latent_space':
+            fea = fea.squeeze(-1).squeeze(-1)
+            
         fea1 = self.mlp(fea)
 
         return fea1
@@ -665,27 +707,44 @@ class ResMLP(nn.Module):
         return res
 
 class denoise(nn.Module):
-    def __init__(self,n_feats = 64, n_denoise_res = 5,timesteps=5):
+    def __init__(self, n_feats=64, n_denoise_res=5, timesteps=5, domain_mode='latent_space', prior_dim=None):
         super(denoise, self).__init__()
-        self.max_period=timesteps*10
-        n_featsx4=4*n_feats
+        self.max_period = timesteps * 10
+        self.domain_mode = domain_mode
+        self.prior_dim = int(prior_dim) if prior_dim is not None else 4 * n_feats
+
+        
         resmlp = [
-            nn.Linear(n_featsx4*2+1, n_featsx4),
+            nn.Linear(2 * self.prior_dim + 1, self.prior_dim),
             nn.LeakyReLU(0.1, True),
         ]
         for _ in range(n_denoise_res):
-            resmlp.append(ResMLP(n_featsx4))
-        self.resmlp=nn.Sequential(*resmlp)
+            resmlp.append(ResMLP(self.prior_dim))
+        self.resmlp = nn.Sequential(*resmlp)
 
-    def forward(self,x, t,c):
+    def forward(self, x, t, c):
+        B, C = c.shape[0], c.shape[1]
         t=t.float()
         t =t/self.max_period
         t=t.view(-1,1)
-        c = torch.cat([c,t,x],dim=1)
         
-        fea = self.resmlp(c)
-
-        return fea 
+        if self.domain_mode == 'latent_space':
+            combined = torch.cat([c, t, x], dim=1)
+        else:
+            # Image space flow: [B, C, H, W] -> flatten to [B, N, C]
+            # We flatten spatial dimensions to allow ResMLP (Linear) to process them
+            _, _, H, W = c.shape
+            t = t.view(B, 1, 1, 1).expand(B, 1, H, W)
+            combined = torch.cat([c, t, x], dim=1) # [B, 2*C+1, H, W]
+            combined = combined.view(B, -1, H*W).permute(0, 2, 1) # [B, N, 2*C+1]
+            
+        fea = self.resmlp(combined)
+        
+        # If we flattened for image space, restore spatial dimensions
+        if self.domain_mode != 'latent_space':
+            fea = fea.permute(0, 2, 1).view(B, -1, H, W)
+            
+        return fea
 
 @ARCH_REGISTRY.register()
 class DiffMSR_S2(nn.Module):
@@ -706,7 +765,9 @@ class DiffMSR_S2(nn.Module):
         linear_end= 0.99, 
         timesteps = 4,
         sample_timesteps = None,
-        sample_timestep_mode = "uniform" ):
+        sample_timestep_mode = "uniform",
+	domain_mode='latent_space',
+        prior_dim = 256 ):
         super(DiffMSR_S2, self).__init__()
 
         # Generator
@@ -721,12 +782,14 @@ class DiffMSR_S2(nn.Module):
         ffn_expansion_factor = ffn_expansion_factor,
         bias = bias,
         LayerNorm_type = LayerNorm_type,   ## Other option 'BiasFree'
+        domain_mode=domain_mode,
+        prior_dim=prior_dim,
         )
-        self.condition = PE(n_feats=64, n_encoder_res=n_encoder_res,scale = scale)
+        self.condition = PE(n_feats=64, n_encoder_res=n_encoder_res, scale=scale, domain_mode=domain_mode, prior_dim=prior_dim)
 
-        self.denoise= denoise(n_feats=64, n_denoise_res=n_denoise_res,timesteps=timesteps)
+        self.denoise = denoise(n_feats=64, n_denoise_res=n_denoise_res, timesteps=timesteps, domain_mode=domain_mode, prior_dim=prior_dim)
 
-        self.diffusion = DDPM(denoise=self.denoise, condition=self.condition ,n_feats=64,linear_start= linear_start,
+        self.diffusion = DDPM(denoise=self.denoise, condition=self.condition ,n_feats=64, prior_dim=prior_dim, linear_start= linear_start,
   linear_end= linear_end, timesteps = timesteps, sample_timesteps=sample_timesteps,
   sample_timestep_mode=sample_timestep_mode)
 
