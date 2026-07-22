@@ -1,291 +1,247 @@
-# DiffMSR PD/PD-FS Super-Resolution Ablations
+# DiffMSR PD/PD-FS Reproduction
 
-This repository adapts the CVPR 2024 DiffMSR/McDiff code to proton-density knee MRI super-resolution with a proton-density fat-suppressed reference image.
+This repository adapts DiffMSR/McDiff for knee MRI super-resolution using proton-density images as the target and proton-density fat-suppressed images as the reference.
 
-Original paper: Guangyuan Li, Chen Rao, Juncheng Mo, Zhanjie Zhang, Wei Xing, Lei Zhao, "Rethinking Diffusion Model for Multi-Contrast MRI Super-Resolution", CVPR 2024.
+Original paper: Guangyuan Li et al., "Rethinking Diffusion Model for Multi-Contrast MRI Super-Resolution", CVPR 2024.
 
 ## Data Mapping
 
-DiffMSR's paired MRI loader expects MATLAB variables named `T1` and `T2`. For this project we keep those names but map them to our contrasts:
+The DiffMSR dataset code expects variables named `T1` and `T2`. For this project:
 
-| DiffMSR field | Project data |
+| DiffMSR field | Our data |
 | --- | --- |
 | `T2` | high-resolution PD target |
 | `T2_128`, `T2_64` | k-space downsampled PD input |
 | `T1`, `T1_128`, `T1_64` | PD fat-suppressed reference |
 
-We used the Knee MRI dataset from the fastMRI bundle, second batch: https://fastmri.med.nyu.edu/
+Raw data, converted `.mat` files, checkpoints, logs, and result images are not tracked by git.
 
 ## Environment
+
+From the repository root:
 
 ```bash
 bash scripts/create_diffmsr_env.sh
 export PYTHON_BIN="$PWD/.conda/envs/diffmsr/bin/python"
 export GPU_ID=3
-export CPUS=4
+export PYTHONPATH="$PWD"
 "$PYTHON_BIN" scripts/check_diffmsr_env.py
 ```
 
-## Prepare Dataset
+If you already have the working cluster environment, this also works:
 
 ```bash
-export RAW_DB=/path/to/knee_mri_clinical_seq_batch2
-export DATA_ROOT=mri_data_complex/mc_knee_pd_fs
-
-OVERWRITE=1 bash scripts/wrap_prepare_pd_fs_dataset.sh "$RAW_DB" "$DATA_ROOT"
+export PYTHON_BIN=/opt/miniconda3/bin/python
+export GPU_ID=3
+export PYTHONPATH="$PWD"
 ```
 
-The preprocessing script discovers matched PD/PD-FS DICOM series, pairs slices by study/orientation, normalizes each slice, applies centered FFT, center-crops k-space to 256/128/64, applies inverse FFT, and writes DiffMSR `.mat` files.
+## 1. Prepare the Dataset
 
-Prepared dataset statistics:
+If the DICOM database is an archive, extract it first:
+
+```bash
+mkdir -p data/extracted_pd_fs
+tar -xf /path/to/knee_DICOMs_batch2.tar.xz -C data/extracted_pd_fs
+```
+
+Convert the extracted DICOM tree into DiffMSR `.mat` files:
+
+```bash
+"$PYTHON_BIN" scripts/preprocess_pd_fs_dicom.py \
+  --input-root data/extracted_pd_fs/knee_DICOMs_batch2 \
+  --out-root mri_data_complex/mc_knee_pd_fs \
+  --train-ratio 0.8 \
+  --seed 0 \
+  --overwrite
+```
+
+For our run, the prepared dataset statistics were:
 
 | Property | Value |
 | --- | ---: |
 | paired studies | 1857 |
 | train studies | 1486 |
-| valid/test studies | 371 |
+| held-out valid/test studies | 371 |
 | train slices | 40372 |
-| valid/test slices | 10119 |
+| held-out valid/test slices | 10119 |
 | skipped slices | 54 |
 | HR / mid / LR sizes | 256 / 128 / 64 |
 
-The `valid/` split was held out from training and used as the reported test set. No third split was created.
+The `valid/` split was not used for fitting weights. We used it as the held-out test set for the reported numbers.
 
-## Exact Experiment YAMLs
+Degradation: each slice is normalized, transformed to centered k-space, center-cropped to `256`, `128`, and `64`, and transformed back with inverse FFT. The script also copies the original DiffMSR demo mask to `mri_data_complex/mc_knee_pd_fs/dc_mask.mat`.
 
-Tracked YAMLs for the reported experiments are stored in:
+## 2. How to Run a YAML
+
+The simplest launchers are:
+
+```bash
+bash train_S1.sh
+bash train_S2.sh
+bash test.sh
+```
+
+Each launcher runs one YAML. Override it with `OPT=...`:
+
+```bash
+GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
+  OPT=options/pd_fs_ablation/train/latent_prior128_stage1_100k.yml \
+  bash train_S1.sh
+```
+
+Run in the background with `nohup`:
+
+```bash
+mkdir -p logs
+nohup env GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
+  OPT=options/pd_fs_ablation/train/latent_prior128_stage1_100k.yml \
+  bash train_S1.sh > logs/latent128_s1.nohup.log 2>&1 &
+tail -f logs/latent128_s1.nohup.log
+```
+
+## 3. Reproduce the Reported Experiments
+
+All exact YAMLs are under:
 
 ```text
 options/pd_fs_ablation/train/
 options/pd_fs_ablation/test/
 ```
 
-They assume:
+### Experiment A: Full Baseline
 
-```text
-DATA_ROOT = mri_data_complex/mc_knee_pd_fs
-checkpoints under experiments/
-```
-
-Run one exact training YAML:
+This is the full 256-dimensional latent prior baseline.
 
 ```bash
-CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
-  "$PYTHON_BIN" -u DiffMSR_Main/train.py \
-  -opt options/pd_fs_ablation/train/latent_prior128_stage1_100k.yml \
-  --launcher none
+nohup env GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
+  OPT=options/pd_fs_ablation/train/baseline_stage1_prior256_500k.yml \
+  bash train_S1.sh > logs/baseline_s1.nohup.log 2>&1 &
 ```
 
-Run one exact test YAML:
+Stage 2 for the logged baseline uses the Stage 1 checkpoint `experiments/pd_fs_stage1_x4/models/net_g_330000.pth`, because that is the checkpoint used in the completed run:
 
 ```bash
-CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
-  "$PYTHON_BIN" -u DiffMSR_Main/test.py \
-  -opt options/pd_fs_ablation/test/latent_prior128_100k.yml \
-  --launcher none
+nohup env GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
+  OPT=options/pd_fs_ablation/train/baseline_stage2_prior256_500k.yml \
+  bash train_S2.sh > logs/baseline_s2.nohup.log 2>&1 &
 ```
 
-## Reproduce Experiments
-
-### Baseline Stage 1, Stage 2, and test
-
-First train the Stage 1 baseline model:
+Then test:
 
 ```bash
-CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
-  "$PYTHON_BIN" -u DiffMSR_Main/train.py \
-  -opt options/pd_fs_ablation/train/baseline_stage1_prior256_500k.yml \
-  --launcher none
+nohup env GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
+  OPT=options/pd_fs_ablation/test/baseline_prior256_500k.yml \
+  bash test.sh > logs/baseline_test.nohup.log 2>&1 &
 ```
 
-The Stage 2 YAMLs are already configured to use the latest Stage 1 checkpoint from the Stage 1 run, so no manual copy step is needed.
+### Experiment B: Denoising Steps
 
-Then run Stage 2 and the held-out test:
-
-```bash
-CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
-  "$PYTHON_BIN" -u DiffMSR_Main/train.py \
-  -opt options/pd_fs_ablation/train/baseline_stage2_prior256_500k.yml \
-  --launcher none
-```
-
-```bash
-CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
-  "$PYTHON_BIN" -u DiffMSR_Main/test.py \
-  -opt options/pd_fs_ablation/test/baseline_prior256_500k.yml \
-  --launcher none
-```
-
-### Experiment 1: Denoising Steps
-
-This ablation changes Stage 2 diffusion denoising steps while reusing one shared Stage 1 checkpoint.
-
-The Stage 2 timestep YAMLs load the latest Stage 1 checkpoint automatically from:
+This ablation retrains only Stage 2. All runs reuse the same Stage 1 checkpoint:
 
 ```text
 experiments/pd_fs_stage1_x4/models/net_g_330000.pth
 ```
-Or from scratch, train a shared 256-dimensional Stage 1 once:
+
+Sequential command:
 
 ```bash
-DATA_ROOT="$DATA_ROOT" STAGE=1 PRIOR_DIM=256 TOTAL_ITER=100000 \
-  RUN_NAME=pd_fs_stage1_x4_prior256_100k RUN_TAG=prior256_stage1_100k \
-  GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" bash scripts/run_diffmsr_nohup.sh
-
-export STAGE1_CKPT=experiments/pd_fs_stage1_x4_prior256_100k/models/net_g_latest.pth
-```
-Use the matching Stage 2 YAML and test YAML for the step count you want. For example, for 4 steps:
-
-```bash
-CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
-  "$PYTHON_BIN" -u DiffMSR_Main/train.py \
-  -opt options/pd_fs_ablation/train/timesteps_steps4_stage2_100k.yml \
-  --launcher none
-```
-
-```bash
-CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
-  "$PYTHON_BIN" -u DiffMSR_Main/test.py \
-  -opt options/pd_fs_ablation/test/timesteps_steps4_100k.yml \
-  --launcher none
-```
-
-The same pattern applies to the other step counts: `steps1`, `steps2`, `steps6`, and `steps8`.
-
-Exact Stage 2 YAMLs:
-
-```text
-options/pd_fs_ablation/train/timesteps_steps1_stage2_100k.yml
-options/pd_fs_ablation/train/timesteps_steps2_stage2_100k.yml
-options/pd_fs_ablation/train/timesteps_steps4_stage2_100k.yml
-options/pd_fs_ablation/train/timesteps_steps6_stage2_100k.yml
-options/pd_fs_ablation/train/timesteps_steps8_stage2_100k.yml
-```
-
-Matching test YAMLs:
-
-```text
-options/pd_fs_ablation/test/timesteps_steps1_100k.yml
-options/pd_fs_ablation/test/timesteps_steps2_100k.yml
-options/pd_fs_ablation/test/timesteps_steps4_100k.yml
-options/pd_fs_ablation/test/timesteps_steps6_100k.yml
-options/pd_fs_ablation/test/timesteps_steps8_100k.yml
-```
-
-Wrapper command to regenerate/run the same experiment family:
-
-```bash
-export STAGE1_CKPT=experiments/pd_fs_stage1_x4/models/net_g_latest.pth
-
 for steps in 1 2 4 6 8; do
-  STAGE1_CKPT="$STAGE1_CKPT" \
-  bash scripts/wrap_train_denoising_steps.sh "$DATA_ROOT" 100000 "$steps" "$GPU_ID"
+  GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
+    OPT="options/pd_fs_ablation/train/timesteps_steps${steps}_stage2_100k.yml" \
+    bash train_S2.sh
+
+  GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
+    OPT="options/pd_fs_ablation/test/timesteps_steps${steps}_100k.yml" \
+    bash test.sh
 done
 ```
 
-### Experiment 2: Latent Vector Size
-
-This ablation changes the 1D diffusion prior/latent vector length. Because `prior_dim` changes the Stage 1 latent interface, each setting trains a matching Stage 1 and Stage 2 pair.
-
-Train and test each pair directly with the matching YAMLs. For example, for 128-dimensional latent prior:
+Background sequential command:
 
 ```bash
-CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
-  "$PYTHON_BIN" -u DiffMSR_Main/train.py \
-  -opt options/pd_fs_ablation/train/latent_prior128_stage1_100k.yml \
-  --launcher none
+nohup bash -lc '
+set -euo pipefail
+export GPU_ID=3
+export PYTHON_BIN=/opt/miniconda3/bin/python
+for steps in 1 2 4 6 8; do
+  OPT="options/pd_fs_ablation/train/timesteps_steps${steps}_stage2_100k.yml" bash train_S2.sh
+  OPT="options/pd_fs_ablation/test/timesteps_steps${steps}_100k.yml" bash test.sh
+done
+' > logs/timesteps_100k_sequence.nohup.log 2>&1 &
 ```
 
-```bash
-CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
-  "$PYTHON_BIN" -u DiffMSR_Main/train.py \
-  -opt options/pd_fs_ablation/train/latent_prior128_stage2_100k.yml \
-  --launcher none
-```
+### Experiment C: Latent Prior Size
 
-```bash
-CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
-  "$PYTHON_BIN" -u DiffMSR_Main/test.py \
-  -opt options/pd_fs_ablation/test/latent_prior128_100k.yml \
-  --launcher none
-```
-
-The same pattern also works for `64`, `256`, and `512` by swapping the YAML filenames.
-
-Exact YAML pairs:
-
-```text
-options/pd_fs_ablation/train/latent_prior64_stage1_100k.yml  -> options/pd_fs_ablation/train/latent_prior64_stage2_100k.yml
-options/pd_fs_ablation/train/latent_prior128_stage1_100k.yml -> options/pd_fs_ablation/train/latent_prior128_stage2_100k.yml
-options/pd_fs_ablation/train/latent_prior256_stage1_100k.yml -> options/pd_fs_ablation/train/latent_prior256_stage2_100k.yml
-options/pd_fs_ablation/train/latent_prior512_stage1_100k.yml -> options/pd_fs_ablation/train/latent_prior512_stage2_100k.yml
-```
-
-Wrapper command:
+This ablation retrains both Stage 1 and Stage 2 for each latent/prior size.
 
 ```bash
 for dim in 64 128 256 512; do
-  bash scripts/wrap_train_latent_size.sh "$DATA_ROOT" 100000 "$dim" "$GPU_ID"
+  GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
+    OPT="options/pd_fs_ablation/train/latent_prior${dim}_stage1_100k.yml" \
+    bash train_S1.sh
+
+  GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
+    OPT="options/pd_fs_ablation/train/latent_prior${dim}_stage2_100k.yml" \
+    bash train_S2.sh
+
+  GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
+    OPT="options/pd_fs_ablation/test/latent_prior${dim}_100k.yml" \
+    bash test.sh
 done
 ```
 
-### Experiment 3: Latent-Space vs Image-Space Diffusion
+The 256-dimensional 100k run can also be reproduced with the pipeline script we used:
 
-This section is reserved for the partner experiment comparing DiffMSR's latent-space diffusion prior against an image-space diffusion variant.
+```bash
+nohup env GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
+  DATA_ROOT=mri_data_complex/mc_knee_pd_fs \
+  bash scripts/run_prior256_100k_pipeline.sh \
+  > logs/prior256_100k_pipeline.nohup.log 2>&1 &
+```
+
+### Experiment D: Latent-Space vs Image-Space Diffusion
+
+This section is for the partner experiment comparing the original latent-space prior against an image-space diffusion variant.
+
+Existing image-space YAMLs:
+
+```text
+options/pd_fs_ablation/train/train_S1_image.yml
+options/pd_fs_ablation/train/train_S2_image.yml
+options/pd_fs_ablation/test/test_image.yml
+```
+
+Fill in the final image-space result here when it is finalized:
 
 | Variant | Training YAML | Test YAML | PSNR | SSIM |
 | --- | --- | --- | ---: | ---: |
-| latent-space diffusion | `baseline_stage1_prior256_500k.yml` + `baseline_stage2_prior256_500k.yml` | `baseline_prior256_500k.yml` | 30.5910 | 0.8473 |
-| image-space diffusion | `train_S1_image.yml` + `train_S2_image.yml` | `test_image.yml` | 30.3210 | 0.8413 |
+| latent-space diffusion | baseline Stage 1 + baseline Stage 2 | `baseline_prior256_500k.yml` | 30.5910 | 0.8473 |
+| image-space diffusion | TODO | TODO | TODO | TODO |
 
-To generate the latent-vs-image-space comparison figures, first run the image-space model test so it creates a DiffMSR-style result folder:
+## 4. Generate Figures
+
+After running tests, result files are expected under:
 
 ```text
-results/pd_fs_test_image_space/visualization/*.mat
+results/<run_name>/visualization/*.mat
 ```
 
-The `.mat` file must contain `recon` and `gt` arrays in the same validation-slice order as `mri_data_complex/mc_knee_pd_fs/valid/`. Then run:
+Generate PSNR/SSIM plots and side-by-side example images:
 
 ```bash
 "$PYTHON_BIN" scripts/visualize_pd_fs_ablation_results.py \
-  --experiments space \
-  --space-models latent=pd_fs_test_baseline_prior256_500k,image=pd_fs_test_image_space \
   --top-n 5 \
   --middle-slice-fraction 0.6
 ```
 
-This writes:
-
-```text
-analysis_outputs/pd_fs_ablation/metrics_space.png
-analysis_outputs/pd_fs_ablation/space_examples/
-analysis_outputs/pd_fs_ablation/selected_space_examples.csv
-```
-
-If her run name is different, replace `pd_fs_test_image_space` with the folder name under `results/`.
-
-## Test And Figures
-
-Run full held-out tests:
+Generate compute-time plots from the logs:
 
 ```bash
-DATA_ROOT="$DATA_ROOT" TEST_GROUP=timesteps GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
-  bash scripts/run_pd_fs_full_tests.sh
-
-DATA_ROOT="$DATA_ROOT" TEST_GROUP=latent GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
-  bash scripts/run_pd_fs_full_tests.sh
-```
-
-Useful `TEST_GROUP` values: `baseline`, `timesteps`, `latent`, `latent256`, `all`.
-
-Generate metric plots, side-by-side examples, and compute-time plots:
-
-```bash
-"$PYTHON_BIN" scripts/visualize_pd_fs_ablation_results.py --top-n 5 --middle-slice-fraction 0.6
 "$PYTHON_BIN" scripts/plot_pd_fs_compute_time.py
 ```
 
-Outputs:
+Main outputs:
 
 ```text
 analysis_outputs/pd_fs_ablation/metrics_summary.csv
@@ -297,13 +253,8 @@ analysis_outputs/pd_fs_ablation/compute_time_summary.csv
 analysis_outputs/pd_fs_ablation/compute_time_latent.png
 analysis_outputs/pd_fs_ablation/compute_time_timesteps.png
 ```
-To generate the latent-vs-image-space comparison figures, first run the image-space model test so it creates a DiffMSR-style result folder:
 
-```text
-results/pd_fs_test_image_space/visualization/*.mat
-```
-
-The `.mat` file must contain `recon` and `gt` arrays in the same validation-slice order as `mri_data_complex/mc_knee_pd_fs/valid/`. Then run:
+For the latent-vs-image-space comparison, make sure the image-space test writes a result folder such as `results/pd_fs_test_image_space/visualization/*.mat`, then run:
 
 ```bash
 "$PYTHON_BIN" scripts/visualize_pd_fs_ablation_results.py \
@@ -313,17 +264,7 @@ The `.mat` file must contain `recon` and `gt` arrays in the same validation-slic
   --middle-slice-fraction 0.6
 ```
 
-This writes:
-
-```text
-analysis_outputs/pd_fs_ablation/metrics_space.png
-analysis_outputs/pd_fs_ablation/space_examples/
-analysis_outputs/pd_fs_ablation/selected_space_examples.csv
-```
-
-If her run name is different, replace `pd_fs_test_image_space` with the folder name under `results/`.
-
-## Results
+## 5. Reported Results
 
 All metrics are on the held-out `valid/` split.
 
@@ -337,9 +278,9 @@ All metrics are on the held-out `valid/` split.
 | 6 | 30.1034 | 0.8372 | 4.43 h |
 | 8 | 30.1064 | 0.8373 | 4.54 h |
 
-Best PSNR was 8 steps. Four steps was essentially tied and is the original setting.
+Best PSNR was 8 steps. Four steps was essentially tied and is the original DiffMSR setting.
 
-### Latent Vector Size, 100k Stage 1 + 100k Stage 2
+### Latent Prior Size, 100k Stage 1 + 100k Stage 2
 
 | `prior_dim` | PSNR | SSIM | total time |
 | ---: | ---: | ---: | ---: |
@@ -348,60 +289,43 @@ Best PSNR was 8 steps. Four steps was essentially tied and is the original setti
 | 256 | 30.0834 | 0.8368 | 5.04 h |
 | 512 | 30.0763 | 0.8367 | 9.51 h |
 
-The best 100k latent-size result was `prior_dim=128`, but differences among 64/128/256 were small.
-
-### Image Space, 500k Stage 1 + 500k Stage 2
-
-| `prior_dim` | PSNR | SSIM |
-| ---: | ---: | ---: |
-| 256 | 30.3210 | 0.8413 |
-
-The result was not as good as the latent space baseline. That supports our conjecture that the latent space, other than being more efficient, also produces better results.
+The best 100k latent-size result was `prior_dim=128`, but the differences among 64/128/256 were small.
 
 ### Full Baseline
 
 | model | PSNR | SSIM |
 | --- | ---: | ---: |
-| 256-dimensional latent, full Stage-2 run | 30.5910 | 0.8473 |
+| 256-dimensional latent prior, full Stage 2 | 30.5910 | 0.8473 |
 
-## Smoke Tests
+## 6. Quick Checks Before Commit
 
-Fast smoke test, no real training:
-
-```bash
-RUN_PREPROCESS_SMOKE=0 bash scripts/smoke_test_pd_fs_wrappers.sh
-```
-
-Smoke test including a tiny DICOM conversion:
+These checks do not start training:
 
 ```bash
-RAW_DB=/path/to/extracted_dicom_folder RUN_PREPROCESS_SMOKE=1 \
-  bash scripts/smoke_test_pd_fs_wrappers.sh
+bash -n train_S1.sh train_S2.sh test.sh
+bash -n scripts/run_diffmsr_nohup.sh scripts/run_pd_fs_full_tests.sh scripts/run_prior256_100k_pipeline.sh
+"$PYTHON_BIN" -m py_compile \
+  scripts/preprocess_pd_fs_dicom.py \
+  scripts/visualize_pd_fs_ablation_results.py \
+  scripts/plot_pd_fs_compute_time.py
 ```
 
-Use an already extracted DICOM folder when possible. If `RAW_DB` is an archive, the smoke script skips extraction by default; set `ALLOW_ARCHIVE_EXTRACT=1` only if full archive extraction is intentional.
-
-## General Training Utilities
-
-Use the wrappers to create new variants without hand-editing YAML:
+Tiny preprocessing check:
 
 ```bash
-# Stage 1 or Stage 2 from template YAMLs
-DATA_ROOT="$DATA_ROOT" STAGE=1 TOTAL_ITER=100000 PRIOR_DIM=256 \
-  RUN_NAME=my_stage1 RUN_TAG=my_stage1 bash scripts/run_diffmsr_nohup.sh
-
-DATA_ROOT="$DATA_ROOT" STAGE=2 TOTAL_ITER=100000 TIMESTEPS=4 PRIOR_DIM=256 \
-  PRETRAIN_S1=experiments/my_stage1/models/net_g_latest.pth \
-  RUN_NAME=my_stage2 RUN_TAG=my_stage2 bash scripts/run_diffmsr_nohup.sh
+"$PYTHON_BIN" scripts/preprocess_pd_fs_dicom.py \
+  --input-root data/extracted_pd_fs/knee_DICOMs_batch2 \
+  --out-root /tmp/diffmsr_pd_fs_tiny \
+  --max-studies 3 \
+  --max-samples 12 \
+  --overwrite
 ```
-
-Generated options are written to `logs/generated_options/`. Training outputs are written to `experiments/<run_name>/`.
 
 ## Notes
 
-- Raw DICOMs, converted `.mat` files, checkpoints, logs, result images, and analysis outputs are ignored by git.
-- The degradation follows the original DiffMSR demo style: center-cropped k-space and inverse FFT. It is a controlled super-resolution degradation, not a realistic accelerated MRI sampling mask.
-- Test YAMLs include an inherited `train:` block from the original template, but `DiffMSR_Main/test.py` only uses the dataset, network, and checkpoint fields.
+- The checked YAML files assume `mri_data_complex/mc_knee_pd_fs` as the dataset root.
+- If you use a different Stage 1 checkpoint, update the `pretrain_network_S1` and `pretrain_network_g` paths in the relevant YAML.
+- Test YAMLs contain an inherited `train:` block from the original template. `DiffMSR_Main/test.py` does not train from that block; it uses the dataset, network, and checkpoint fields.
 
 ## Acknowledgements
 
