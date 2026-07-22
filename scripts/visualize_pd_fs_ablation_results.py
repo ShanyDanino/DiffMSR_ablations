@@ -11,12 +11,21 @@ The script uses the standalone full-test outputs under results/:
 
 It creates:
   - PSNR/SSIM plots for latent-size and diffusion-step ablations.
+  - Optional latent-space vs image-space comparison plots/grids.
   - CSV summaries.
   - Side-by-side image grids for selected slices.
 
 Example selection is based on the slices where model reconstructions differ
 most, measured by the per-slice PSNR spread across the models in each ablation.
 The result .mat files are large, so they are loaded one model at a time.
+
+For a custom latent-space vs image-space comparison, pass:
+
+  --experiments space \
+  --space-models latent=pd_fs_test_baseline_prior256_500k,image=pd_fs_test_image_space
+
+Each run must have results/<run_name>/visualization/*.mat containing recon and gt
+arrays in the same validation-slice order.
 """
 
 from __future__ import annotations
@@ -73,6 +82,30 @@ STEP_MODELS = [
 BASELINE_MODEL = ModelSpec("baseline", "baseline 256", 256, "pd_fs_test_baseline_prior256_500k")
 
 
+def parse_model_specs(raw: str, experiment: str) -> list[ModelSpec]:
+    specs: list[ModelSpec] = []
+    if not raw.strip():
+        return specs
+
+    for idx, item in enumerate(raw.split(",")):
+        item = item.strip()
+        if not item:
+            continue
+        if "=" in item:
+            label, run_name = item.split("=", 1)
+        elif ":" in item:
+            label, run_name = item.split(":", 1)
+        else:
+            label = item
+            run_name = item
+        label = label.strip()
+        run_name = run_name.strip()
+        if not label or not run_name:
+            raise ValueError(f"Invalid model spec: {item!r}. Use label=run_name.")
+        specs.append(ModelSpec(experiment, label, idx, run_name))
+    return specs
+
+
 def result_mat_path(run_name: str) -> Path:
     paths = sorted((PROJECT_ROOT / "results" / run_name / "visualization").glob("*.mat"))
     if not paths:
@@ -115,9 +148,9 @@ def write_metric_csv(out_dir: Path, rows: list[dict[str, object]]) -> None:
     print(out_path)
 
 
-def collect_metric_rows() -> list[dict[str, object]]:
+def collect_metric_rows(extra_specs: list[ModelSpec] | None = None) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
-    for spec in [*LATENT_MODELS, *STEP_MODELS, BASELINE_MODEL]:
+    for spec in [*LATENT_MODELS, *STEP_MODELS, BASELINE_MODEL, *(extra_specs or [])]:
         psnr, ssim = parse_test_metrics(spec.run_name)
         rows.append(
             {
@@ -140,6 +173,7 @@ def plot_experiment_metrics(
     rows: list[dict[str, object]],
     out_name: str,
     include_baseline_reference: bool = False,
+    min_points: int = 1,
 ) -> None:
     row_by_run = {row["run_name"]: row for row in rows}
     available_specs = [
@@ -153,6 +187,9 @@ def plot_experiment_metrics(
         print(f"Skipping missing metrics for {title}: {', '.join(missing)}")
     if not available_specs:
         print(f"No metrics available for {title}; skipping plot.")
+        return
+    if len(available_specs) < min_points:
+        print(f"Only {len(available_specs)} metric point(s) available for {title}; skipping plot.")
         return
 
     xs = [spec.value for spec in available_specs]
@@ -232,8 +269,8 @@ def safe_psnr_from_mse(mse: np.ndarray, data_range: float) -> np.ndarray:
     return 20.0 * np.log10(max(data_range, 1e-6)) - 10.0 * np.log10(mse)
 
 
-def ordered_valid_paths() -> list[Path]:
-    valid_dir = PROJECT_ROOT / "mri_data_complex" / "mc_knee_pd_fs" / "valid"
+def ordered_valid_paths(data_root: Path) -> list[Path]:
+    valid_dir = data_root / "valid"
     paths = paired_paths_from_folder([str(valid_dir), str(valid_dir)], ["lq", "gt"], "{}")
     return [Path(item["gt_path"]) for item in paths]
 
@@ -517,6 +554,7 @@ def parse_indices(raw: str | None) -> list[int]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out-dir", default="analysis_outputs/pd_fs_ablation", help="Output directory.")
+    parser.add_argument("--data-root", default="mri_data_complex/mc_knee_pd_fs", help="Prepared dataset root.")
     parser.add_argument("--top-n", type=int, default=5, help="Number of high-difference examples per experiment.")
     parser.add_argument("--skip-top", type=int, default=0, help="Skip this many auto-selected examples before rendering.")
     parser.add_argument("--indices", default="", help="Comma-separated validation indices to force-render.")
@@ -531,14 +569,28 @@ def main() -> None:
     parser.add_argument(
         "--experiments",
         default="latent,timesteps",
-        help="Comma-separated experiments to render: latent,timesteps.",
+        help="Comma-separated experiments to render: latent,timesteps,space.",
+    )
+    parser.add_argument(
+        "--space-models",
+        default="",
+        help=(
+            "Comma-separated custom models for latent-vs-image-space comparison, "
+            "formatted as label=run_name,label=run_name."
+        ),
+    )
+    parser.add_argument(
+        "--space-title",
+        default="Latent-space vs image-space diffusion",
+        help="Plot title for --experiments space.",
     )
     args = parser.parse_args()
 
     out_dir = PROJECT_ROOT / args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    rows = collect_metric_rows()
+    space_specs = parse_model_specs(args.space_models, "space")
+    rows = collect_metric_rows(space_specs)
     write_metric_csv(out_dir, rows)
     plot_experiment_metrics(out_dir, "Latent vector size ablation", "prior_dim", LATENT_MODELS, rows, "metrics_latent.png")
     plot_experiment_metrics(
@@ -549,11 +601,24 @@ def main() -> None:
         rows,
         "metrics_timesteps.png",
     )
+    if space_specs:
+        plot_experiment_metrics(
+            out_dir,
+            args.space_title,
+            "variant",
+            space_specs,
+            rows,
+            "metrics_space.png",
+            min_points=2,
+        )
 
     if args.only_plots:
         return
 
-    valid_paths = ordered_valid_paths()
+    data_root = Path(args.data_root)
+    if not data_root.is_absolute():
+        data_root = PROJECT_ROOT / data_root
+    valid_paths = ordered_valid_paths(data_root)
     forced_indices = parse_indices(args.indices)
     if args.example_file:
         forced_indices.append(find_index_for_example(valid_paths, args.example_file))
@@ -599,6 +664,27 @@ def main() -> None:
                 args.skip_top,
             )
             render_examples("timesteps", timestep_specs, selected, valid_paths, out_dir / "timestep_examples")
+
+    if "space" in experiments:
+        if not space_specs:
+            print("No --space-models provided; skipping space examples.")
+        else:
+            available_specs = [spec for spec in space_specs if has_result_mat(spec.run_name)]
+            if len(available_specs) != len(space_specs):
+                missing = [spec.label for spec in space_specs if not has_result_mat(spec.run_name)]
+                print(f"Skipping missing space image results: {', '.join(missing)}")
+            if len(available_specs) < 2:
+                print("Not enough space result files for example selection; skipping space examples.")
+            else:
+                selected = select_interesting_indices(
+                    available_specs,
+                    args.top_n,
+                    forced_indices,
+                    out_dir / "selected_space_examples.csv",
+                    candidate_indices,
+                    args.skip_top,
+                )
+                render_examples("space", available_specs, selected, valid_paths, out_dir / "space_examples")
 
 
 if __name__ == "__main__":
