@@ -85,43 +85,42 @@ CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
   --launcher none
 ```
 
-## Simple Train/Test Scripts
-
-For the baseline run, the shortest path is:
-
-```bash
-GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" bash train_S1.sh
-GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" bash train_S2.sh
-GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" bash test.sh
-```
-
-The defaults are:
-
-```text
-train_S1.sh -> options/pd_fs_ablation/train/baseline_stage1_prior256_500k.yml
-train_S2.sh -> options/pd_fs_ablation/train/baseline_stage2_prior256_500k.yml
-test.sh     -> options/pd_fs_ablation/test/baseline_prior256_500k.yml
-```
-
-Use `OPT=...` to run any exact ablation YAML:
-
-```bash
-OPT=options/pd_fs_ablation/train/timesteps_steps4_stage2_100k.yml \
-  GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" bash train_S2.sh
-
-OPT=options/pd_fs_ablation/test/timesteps_steps4_100k.yml \
-  GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" bash test.sh
-```
-
-These scripts run fixed YAML files. Use the wrapper scripts below when you need to regenerate YAMLs for a different dataset root, iteration count, denoising-step count, or latent size.
-
 ## Reproduce Experiments
+
+### Baseline Stage 1, Stage 2, and test
+
+First train the Stage 1 baseline model:
+
+```bash
+CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
+  "$PYTHON_BIN" -u DiffMSR_Main/train.py \
+  -opt options/pd_fs_ablation/train/baseline_stage1_prior256_500k.yml \
+  --launcher none
+```
+
+The Stage 2 YAMLs are already configured to use the latest Stage 1 checkpoint from the Stage 1 run, so no manual copy step is needed.
+
+Then run Stage 2 and the held-out test:
+
+```bash
+CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
+  "$PYTHON_BIN" -u DiffMSR_Main/train.py \
+  -opt options/pd_fs_ablation/train/baseline_stage2_prior256_500k.yml \
+  --launcher none
+```
+
+```bash
+CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
+  "$PYTHON_BIN" -u DiffMSR_Main/test.py \
+  -opt options/pd_fs_ablation/test/baseline_prior256_500k.yml \
+  --launcher none
+```
 
 ### Experiment 1: Denoising Steps
 
 This ablation changes Stage 2 diffusion denoising steps while reusing one shared Stage 1 checkpoint.
 
-Shared Stage 1 used for the reported timestep ablation:
+The Stage 2 timestep YAMLs load the latest Stage 1 checkpoint automatically from:
 
 ```text
 experiments/pd_fs_stage1_x4/models/net_g_330000.pth
