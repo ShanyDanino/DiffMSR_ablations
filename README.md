@@ -181,6 +181,31 @@ analysis_outputs/pd_fs_ablation/compute_time_summary.csv
 analysis_outputs/pd_fs_ablation/compute_time_latent.png
 analysis_outputs/pd_fs_ablation/compute_time_timesteps.png
 ```
+To generate the latent-vs-image-space comparison figures, first run the image-space model test so it creates a DiffMSR-style result folder:
+
+```text
+results/pd_fs_test_image_space/visualization/*.mat
+```
+
+The `.mat` file must contain `recon` and `gt` arrays in the same validation-slice order as `mri_data_complex/mc_knee_pd_fs/valid/`. Then run:
+
+```bash
+"$PYTHON_BIN" scripts/visualize_pd_fs_ablation_results.py \
+  --experiments space \
+  --space-models latent=pd_fs_test_baseline_prior256_500k,image=pd_fs_test_image_space \
+  --top-n 5 \
+  --middle-slice-fraction 0.6
+```
+
+This writes:
+
+```text
+analysis_outputs/pd_fs_ablation/metrics_space.png
+analysis_outputs/pd_fs_ablation/space_examples/
+analysis_outputs/pd_fs_ablation/selected_space_examples.csv
+```
+
+If her run name is different, replace `pd_fs_test_image_space` with the folder name under `results/`.
 
 ## Results
 
