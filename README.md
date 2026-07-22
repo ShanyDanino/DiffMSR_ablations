@@ -86,10 +86,10 @@ DATA_ROOT="$DATA_ROOT" STAGE=1 PRIOR_DIM=256 TOTAL_ITER=100000 \
 export STAGE1_CKPT=experiments/pd_fs_stage1_x4_prior256_100k/models/net_g_latest.pth
 ```
 
-Run one denoising-step Stage-2 setting:
+Run one denoising-step Stage-2 setting (for example, the original setting of 4 denoising steps and with 100000 iterations):
 
 ```bash
-bash scripts/wrap_train_denoising_steps.sh "$DATA_ROOT" 100000 8 "$GPU_ID"
+bash scripts/wrap_train_denoising_steps.sh "$DATA_ROOT" 100000 4 "$GPU_ID"
 ```
 
 Run the full set sequentially with `nohup`:
@@ -118,10 +118,10 @@ For the full denoising-step ablation, prefer the explicit shared Stage-1 command
 
 Changing `prior_dim` changes the Stage-1 latent interface, so each latent-size experiment trains Stage 1 and then Stage 2 with the matching checkpoint.
 
-Run one latent-size setting:
+Run one latent-size setting (for example, the original setting of 256 latent vector size and with 100000 iterations):
 
 ```bash
-bash scripts/wrap_train_latent_size.sh "$DATA_ROOT" 100000 128 "$GPU_ID"
+bash scripts/wrap_train_latent_size.sh "$DATA_ROOT" 100000 256 "$GPU_ID"
 ```
 
 Run all latent-size settings sequentially with `nohup`:
