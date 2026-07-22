@@ -215,7 +215,7 @@ The best 100k latent-size result was `prior_dim=128`, but differences among 64/1
 | ---: | ---: | ---: |
 | 256 | 30.3210 | 0.8413 |
 
-The best 100k latent-size result was `prior_dim=128`, but differences among 64/128/256 were small.
+The result was not as good as the latent space baseline. That supports our conjecture that the latent space, other than being more efficient, also produces better results.
 
 ### Full Baseline
 
