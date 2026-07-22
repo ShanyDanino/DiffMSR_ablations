@@ -40,13 +40,36 @@ else
     conda "${CLONE_ARGS[@]}"
 fi
 
+echo "Registering this repository on the environment Python path..."
+PROJECT_ROOT_FOR_PTH="${PROJECT_ROOT}" conda run -p "${ENV_PREFIX}" python - <<'PY'
+import os
+from pathlib import Path
+import site
+
+project_root = os.environ["PROJECT_ROOT_FOR_PTH"]
+site_packages = next(
+    (Path(path) for path in site.getsitepackages() if path.endswith("site-packages")),
+    Path(site.getusersitepackages()),
+)
+site_packages.mkdir(parents=True, exist_ok=True)
+pth_path = site_packages / "diffmsr_repo.pth"
+
+# Force the checked-out repository to win over any pip-installed BasicSR.
+line = (
+    "import sys; p = "
+    + repr(project_root)
+    + "; sys.path[:] = [x for x in sys.path if x != p]; sys.path.insert(0, p)"
+)
+pth_path.write_text(line + "\n", encoding="utf-8")
+print(pth_path)
+PY
+
 echo "Checking DiffMSR imports..."
 if ! conda run -p "${ENV_PREFIX}" python "${PROJECT_ROOT}/scripts/check_diffmsr_env.py"
 then
     echo "Some imports are missing. Installing repo requirements plus DiffMSR extras..."
     conda run -p "${ENV_PREFIX}" python -m pip install \
-        -r "${PROJECT_ROOT}/requirements.txt" \
-        scipy pydicom timm einops lmdb tensorboard pyyaml
+        -r "${PROJECT_ROOT}/requirements.txt"
 fi
 
 echo "Final import check..."

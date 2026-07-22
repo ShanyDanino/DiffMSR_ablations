@@ -43,6 +43,7 @@ class DDPM(nn.Module):
                  parameterization="x0",  # all assuming fixed variance schedules
                  sample_timesteps=None,
                  sample_timestep_mode="uniform",
+                 prior_dim=None,
                  ):
         super().__init__()
         assert parameterization in ["eps", "x0"], 'currently only supporting "eps" and "x0"'
@@ -52,6 +53,7 @@ class DDPM(nn.Module):
         self.clip_denoised = clip_denoised
         self.image_size = image_size  # try conv?
         self.channels = n_feats
+        self.prior_dim = int(prior_dim) if prior_dim is not None else int(n_feats) * 4
         self.model = denoise
         self.condition = condition
 
@@ -242,7 +244,7 @@ class DDPM(nn.Module):
                 pred_IPR_list.append(IPR)
             return IPR,pred_IPR_list
         else:       
-            shape=(img.shape[0],self.channels*4)
+            shape=(img.shape[0], self.prior_dim)
             x_noisy = torch.randn(shape, device=device)
             c = self.condition(img)
             IPR = x_noisy
@@ -254,5 +256,4 @@ class DDPM(nn.Module):
                 IPR, _ = self.p_sample(IPR, torch.full((b,), i,  device=device, dtype=torch.long), c,
                                 clip_denoised=self.clip_denoised)
             return IPR
-
 

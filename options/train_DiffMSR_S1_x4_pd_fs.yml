@@ -51,6 +51,7 @@ network_g:
   ffn_expansion_factor: 2.2
   bias: False
   LayerNorm_type: BiasFree
+  prior_dim: 256
 
 # path
 path:

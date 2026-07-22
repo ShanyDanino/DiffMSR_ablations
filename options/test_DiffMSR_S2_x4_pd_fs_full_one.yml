@@ -35,6 +35,7 @@ network_g:
   timesteps: 8
   sample_timesteps: 8
   sample_timestep_mode: uniform
+  prior_dim: 256
 
 network_S1:
   type: DiffMSR_S1
@@ -48,6 +49,7 @@ network_S1:
   ffn_expansion_factor: 2.2
   bias: false
   LayerNorm_type: BiasFree
+  prior_dim: 256
 
 path:
   pretrain_network_S1: experiments/pd_fs_stage1_x4/models/net_g_330000.pth

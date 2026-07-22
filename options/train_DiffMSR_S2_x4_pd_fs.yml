@@ -55,6 +55,7 @@ network_g:
   linear_start: 0.1
   linear_end: 0.99
   timesteps: 8
+  prior_dim: 256
 
 network_S1:
   type: DiffMSR_S1
@@ -68,6 +69,7 @@ network_S1:
   ffn_expansion_factor: 2.2
   bias: False
   LayerNorm_type: BiasFree
+  prior_dim: 256
 
 # path
 path:

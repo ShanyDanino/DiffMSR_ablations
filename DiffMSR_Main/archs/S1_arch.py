@@ -69,7 +69,7 @@ class LayerNorm(nn.Module):
 
 
 class PG_FeedForward(nn.Module):
-    def __init__(self, dim, ffn_expansion_factor, bias):
+    def __init__(self, dim, ffn_expansion_factor, bias, prior_dim=256):
         super(PG_FeedForward, self).__init__()
 
         hidden_features = int(dim*ffn_expansion_factor)
@@ -81,7 +81,7 @@ class PG_FeedForward(nn.Module):
         self.project_out = nn.Conv2d(hidden_features, dim, kernel_size=1, bias=bias)
 
         self.kernel = nn.Sequential(
-            nn.Linear(256, dim*2, bias=False),
+            nn.Linear(prior_dim, dim*2, bias=False),
         )
     def forward(self, x,k_v):
         b,c,h,w = x.shape
@@ -140,7 +140,8 @@ class PL_MSA(nn.Module):
         attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
-    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.,
+                 prior_dim=256):
 
         super().__init__()
         self.dim = dim
@@ -181,7 +182,7 @@ class PL_MSA(nn.Module):
         trunc_normal_(self.relative_position_bias_table, std=.02)
         self.softmax = nn.Softmax(dim=-1)
         self.kernel = nn.Sequential(
-            nn.Linear(256, dim * 2, bias=False),
+            nn.Linear(prior_dim, dim * 2, bias=False),
         )
         #############################
         ########## ORG ##############
@@ -332,7 +333,8 @@ class TransformerBlock(nn.Module):
                  attn_drop=0.,
                  drop_path=0.,
                  act_layer=nn.GELU,
-                 norm_layer=nn.LayerNorm):
+                 norm_layer=nn.LayerNorm,
+                 prior_dim=256):
         super(TransformerBlock, self).__init__()
 
         self.dim = dim
@@ -355,7 +357,8 @@ class TransformerBlock(nn.Module):
             qkv_bias=qkv_bias,
             qk_scale=qk_scale,
             attn_drop=attn_drop,
-            proj_drop=drop)
+            proj_drop=drop,
+            prior_dim=prior_dim)
 
         if self.shift_size > 0:
             attn_mask = self.calculate_mask(self.input_resolution)
@@ -366,7 +369,7 @@ class TransformerBlock(nn.Module):
         self.norm1 = LayerNorm(dim, LayerNorm_type)
         # self.attn = Attention(dim, num_heads, bias)
         self.norm2 = LayerNorm(dim, LayerNorm_type)
-        self.ffn = PG_FeedForward(dim, ffn_expansion_factor, bias)
+        self.ffn = PG_FeedForward(dim, ffn_expansion_factor, bias, prior_dim=prior_dim)
 
     def calculate_mask(self, x_size):
         # calculate mask for original windows
@@ -500,13 +503,14 @@ class Upsample(nn.Module):
         return self.body(x)
 
 class BasicLayer(nn.Module):
-    def __init__(self, dim, num_heads, ffn_expansion_factor, bias, LayerNorm_type, num_blocks):
+    def __init__(self, dim, num_heads, ffn_expansion_factor, bias, LayerNorm_type, num_blocks, prior_dim=256):
 
         super().__init__()
 
         # build blocks
         self.blocks = nn.ModuleList(
-            [TransformerBlock(dim=dim, num_heads=num_heads, ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type) for i in
+            [TransformerBlock(dim=dim, num_heads=num_heads, ffn_expansion_factor=ffn_expansion_factor, bias=bias,
+                              LayerNorm_type=LayerNorm_type, prior_dim=prior_dim) for i in
              range(num_blocks)])
 
         self.conv = nn.Conv2d(dim, dim, 3, 1, 1)
@@ -534,6 +538,7 @@ class PLWformer(nn.Module):
         ffn_expansion_factor = 2.66,
         bias = False,
         LayerNorm_type = 'WithBias',   ## Other option 'BiasFree'
+        prior_dim = 256,
         ):
 
         super(PLWformer, self).__init__()
@@ -550,19 +555,24 @@ class PLWformer(nn.Module):
         self.ref_patch_embed = REFOverlapPatchEmbed(inp_channels, dim*2)
 
         self.level1 = BasicLayer(dim=dim*2, num_heads=heads[0], ffn_expansion_factor=ffn_expansion_factor,
-                                         bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[0])
+                                         bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[0],
+                                         prior_dim=prior_dim)
 
         self.level2 = BasicLayer(dim=dim*2, num_heads=heads[1], ffn_expansion_factor=ffn_expansion_factor,
-                                         bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[1])
+                                         bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[1],
+                                         prior_dim=prior_dim)
 
         self.level3 = BasicLayer(dim=dim*2, num_heads=heads[2], ffn_expansion_factor=ffn_expansion_factor,
-                                 bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[2])
+                                 bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[2],
+                                 prior_dim=prior_dim)
 
         self.level4 = BasicLayer(dim=dim*2, num_heads=heads[3], ffn_expansion_factor=ffn_expansion_factor,
-                                 bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[3])
+                                 bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[3],
+                                 prior_dim=prior_dim)
         
         self.refinement = BasicLayer(dim=dim*2, num_heads=heads[3], ffn_expansion_factor=ffn_expansion_factor,
-                                 bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[3])
+                                 bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=num_blocks[3],
+                                 prior_dim=prior_dim)
 
         self.CA = CATL.BasicLayer(dim=dim*2, num_heads=4, ffn_expansion_factor=ffn_expansion_factor,
                                     bias=bias, LayerNorm_type=LayerNorm_type, num_blocks=2)
@@ -598,9 +608,10 @@ class PLWformer(nn.Module):
         return out_dec
 
 class PE(nn.Module):
-    def __init__(self,n_feats = 64, n_encoder_res = 6,scale=4):
+    def __init__(self,n_feats = 64, n_encoder_res = 6,scale=4, prior_dim=256):
         super(PE, self).__init__()
         self.scale=scale
+        self.prior_dim = int(prior_dim)
         if scale == 2:
             E1=[nn.Conv2d(40, n_feats, kernel_size=3, padding=1),
                 nn.LeakyReLU(0.1, True)]
@@ -629,9 +640,9 @@ class PE(nn.Module):
             *E
         )
         self.mlp = nn.Sequential(
-            nn.Linear(n_feats * 4, n_feats * 4),
+            nn.Linear(n_feats * 4, self.prior_dim),
             nn.LeakyReLU(0.1, True),
-            nn.Linear(n_feats * 4, n_feats * 4),
+            nn.Linear(self.prior_dim, self.prior_dim),
             nn.LeakyReLU(0.1, True)
         )
         self.pixel_unshuffle = nn.PixelUnshuffle(4)
@@ -668,6 +679,7 @@ class DiffMSR_S1(nn.Module):
         ffn_expansion_factor = 2.66,
         bias = False,
         LayerNorm_type = 'WithBias',   ## Other option 'BiasFree'
+        prior_dim = 256,
 ):
         super(DiffMSR_S1, self).__init__()
 
@@ -683,9 +695,10 @@ class DiffMSR_S1(nn.Module):
         ffn_expansion_factor = ffn_expansion_factor,
         bias = bias,
         LayerNorm_type = LayerNorm_type,   ## Other option 'BiasFree'
+        prior_dim = prior_dim,
 )
 
-        self.E = PE(n_feats=64, n_encoder_res=n_encoder_res, scale=scale)
+        self.E = PE(n_feats=64, n_encoder_res=n_encoder_res, scale=scale, prior_dim=prior_dim)
 
 
     def forward(self, x, ref, gt):
