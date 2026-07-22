@@ -146,9 +146,7 @@ This section is reserved for the partner experiment comparing DiffMSR's latent-s
 | Variant | Training YAML | Test YAML | PSNR | SSIM |
 | --- | --- | --- | ---: | ---: |
 | latent-space diffusion | `baseline_stage1_prior256_500k.yml` + `baseline_stage2_prior256_500k.yml` | `baseline_prior256_500k.yml` | 30.5910 | 0.8473 |
-| image-space diffusion | TODO | TODO | TODO | TODO |
-
-Add the image-space YAMLs/results here once that experiment is finalized.
+| image-space diffusion | `train_S1_image.yml` + `train_S2_image.yml` | `test_image.yml` | 30.3210 | 0.8413 |
 
 ## Test And Figures
 
@@ -208,6 +206,14 @@ Best PSNR was 8 steps. Four steps was essentially tied and is the original setti
 | 128 | 30.1032 | 0.8372 | 9.20 h |
 | 256 | 30.0834 | 0.8368 | 5.04 h |
 | 512 | 30.0763 | 0.8367 | 9.51 h |
+
+The best 100k latent-size result was `prior_dim=128`, but differences among 64/128/256 were small.
+
+### Image Space, 500k Stage 1 + 500k Stage 2
+
+| `prior_dim` | PSNR | SSIM |
+| ---: | ---: | ---: |
+| 256 | 30.3210 | 0.8413 |
 
 The best 100k latent-size result was `prior_dim=128`, but differences among 64/128/256 were small.
 
