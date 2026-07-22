@@ -26,10 +26,11 @@ elif [[ "$DOMAIN_MODE" == "latent_space" ]]; then
             512) YAML_FILE="latent_prior512_stage2_100k.yml" ;;
             *) echo "Error: No matching YAML file for prior_dim='${PRIOR_DIM}'"; exit 1 ;;
         esac
-    elif [[ "$TIMESTEPS" != "4" ]]; then
+    elif [[ "$PRIOR_DIM" == "256" ]]; then
         case "$TIMESTEPS" in
             1) YAML_FILE="timesteps_steps1_stage2_100k.yml" ;;
             2) YAML_FILE="timesteps_steps2_stage2_100k.yml" ;;
+            4) YAML_FILE="timesteps_steps4_stage2_100k.yml" ;;
             6) YAML_FILE="timesteps_steps6_stage2_100k.yml" ;;
             8) YAML_FILE="timesteps_steps8_stage2_100k.yml" ;;
             *) echo "Error: No matching YAML file for timesteps='${TIMESTEPS}'"; exit 1 ;;
