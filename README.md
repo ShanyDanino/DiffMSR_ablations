@@ -36,6 +36,7 @@ export CPUS=4
 We used the Knee MRI dataset that is a part of the fast MRI bundle (second batch). The database is available to download here: https://fastmri.med.nyu.edu/
 
 The preparation wrapper accepts either an extracted DICOM database folder or a supported archive.
+The database is available to download here: https://fastmri.med.nyu.edu/
 
 ```bash
 export RAW_DB=/path/to/knee_mri_clinical_seq_batch2
@@ -185,6 +186,31 @@ analysis_outputs/pd_fs_ablation/compute_time_summary.csv
 analysis_outputs/pd_fs_ablation/compute_time_latent.png
 analysis_outputs/pd_fs_ablation/compute_time_timesteps.png
 ```
+
+## Exact Experiment YAMLs
+
+Tracked copies of the reported experiment YAMLs are in:
+
+```text
+options/pd_fs_ablation/train/
+options/pd_fs_ablation/test/
+```
+
+Use these when you want the exact configuration files visible to a reviewer. For example:
+
+```bash
+CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
+  "$PYTHON_BIN" -u DiffMSR_Main/train.py \
+  -opt options/pd_fs_ablation/train/latent_prior128_stage1_100k.yml \
+  --launcher none
+
+CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
+  "$PYTHON_BIN" -u DiffMSR_Main/test.py \
+  -opt options/pd_fs_ablation/test/latent_prior128_100k.yml \
+  --launcher none
+```
+
+The tracked YAMLs assume `DATA_ROOT=mri_data_complex/mc_knee_pd_fs` and the checkpoint paths shown inside each file. To regenerate equivalent YAMLs for another dataset root or hyperparameter value, use the wrappers above; they write generated options to `logs/generated_options/` and `logs/generated_test_options/`.
 
 ## Smoke Tests Before Commit
 
