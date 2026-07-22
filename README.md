@@ -105,6 +105,23 @@ DATA_ROOT="$DATA_ROOT" STAGE=1 PRIOR_DIM=256 TOTAL_ITER=100000 \
 
 export STAGE1_CKPT=experiments/pd_fs_stage1_x4_prior256_100k/models/net_g_latest.pth
 ```
+Use the matching Stage 2 YAML and test YAML for the step count you want. For example, for 4 steps:
+
+```bash
+CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
+  "$PYTHON_BIN" -u DiffMSR_Main/train.py \
+  -opt options/pd_fs_ablation/train/timesteps_steps4_stage2_100k.yml \
+  --launcher none
+```
+
+```bash
+CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
+  "$PYTHON_BIN" -u DiffMSR_Main/test.py \
+  -opt options/pd_fs_ablation/test/timesteps_steps4_100k.yml \
+  --launcher none
+```
+
+The same pattern applies to the other step counts: `steps1`, `steps2`, `steps6`, and `steps8`.
 
 Exact Stage 2 YAMLs:
 
@@ -114,6 +131,16 @@ options/pd_fs_ablation/train/timesteps_steps2_stage2_100k.yml
 options/pd_fs_ablation/train/timesteps_steps4_stage2_100k.yml
 options/pd_fs_ablation/train/timesteps_steps6_stage2_100k.yml
 options/pd_fs_ablation/train/timesteps_steps8_stage2_100k.yml
+```
+
+Matching test YAMLs:
+
+```text
+options/pd_fs_ablation/test/timesteps_steps1_100k.yml
+options/pd_fs_ablation/test/timesteps_steps2_100k.yml
+options/pd_fs_ablation/test/timesteps_steps4_100k.yml
+options/pd_fs_ablation/test/timesteps_steps6_100k.yml
+options/pd_fs_ablation/test/timesteps_steps8_100k.yml
 ```
 
 Wrapper command to regenerate/run the same experiment family:
@@ -131,13 +158,38 @@ done
 
 This ablation changes the 1D diffusion prior/latent vector length. Because `prior_dim` changes the Stage 1 latent interface, each setting trains a matching Stage 1 and Stage 2 pair.
 
+Train and test each pair directly with the matching YAMLs. For example, for 128-dimensional latent prior:
+
+```bash
+CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
+  "$PYTHON_BIN" -u DiffMSR_Main/train.py \
+  -opt options/pd_fs_ablation/train/latent_prior128_stage1_100k.yml \
+  --launcher none
+```
+
+```bash
+CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
+  "$PYTHON_BIN" -u DiffMSR_Main/train.py \
+  -opt options/pd_fs_ablation/train/latent_prior128_stage2_100k.yml \
+  --launcher none
+```
+
+```bash
+CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
+  "$PYTHON_BIN" -u DiffMSR_Main/test.py \
+  -opt options/pd_fs_ablation/test/latent_prior128_100k.yml \
+  --launcher none
+```
+
+The same pattern also works for `64`, `256`, and `512` by swapping the YAML filenames.
+
 Exact YAML pairs:
 
 ```text
-latent_prior64_stage1_100k.yml   -> latent_prior64_stage2_100k.yml
-latent_prior128_stage1_100k.yml  -> latent_prior128_stage2_100k.yml
-latent_prior256_stage1_100k.yml  -> latent_prior256_stage2_100k.yml
-latent_prior512_stage1_100k.yml  -> latent_prior512_stage2_100k.yml
+options/pd_fs_ablation/train/latent_prior64_stage1_100k.yml  -> options/pd_fs_ablation/train/latent_prior64_stage2_100k.yml
+options/pd_fs_ablation/train/latent_prior128_stage1_100k.yml -> options/pd_fs_ablation/train/latent_prior128_stage2_100k.yml
+options/pd_fs_ablation/train/latent_prior256_stage1_100k.yml -> options/pd_fs_ablation/train/latent_prior256_stage2_100k.yml
+options/pd_fs_ablation/train/latent_prior512_stage1_100k.yml -> options/pd_fs_ablation/train/latent_prior512_stage2_100k.yml
 ```
 
 Wrapper command:
