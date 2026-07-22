@@ -143,8 +143,9 @@ class PL_MSA(nn.Module):
         attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
-    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, 
-                 attn_drop=0., proj_drop=0., prior_dim=256):
+
+    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.,
+                 prior_dim=256):
         super().__init__()
         self.dim = dim
         self.window_size = window_size# Wh, Ww
@@ -340,7 +341,6 @@ class TransformerBlock(nn.Module):
                  act_layer=nn.GELU,
                  norm_layer=nn.LayerNorm,
                  domain_mode='latent_space',
-                 prior_dim=256,):
         super(TransformerBlock, self).__init__()
 
         self.dim = dim

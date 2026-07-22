@@ -14,12 +14,14 @@ mri_data_complex/
 *.h5
 *.hdf5
 *.dcm
+*.pdf
 
 # Training/evaluation outputs
 experiments/
 results/
 tb_logger/
 logs/
+analysis_outputs/
 *.log
 *.out
 *.err

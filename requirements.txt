@@ -1,8 +1,27 @@
-facexlib>=0.2.0.3
-gfpgan>=0.2.1
-numpy
-opencv-python
-Pillow
+# DiffMSR / PD-FS preprocessing and training dependencies.
+#
+# PyTorch wheels are platform/CUDA-specific. On the Technion cluster we clone
+# the working base env, which already contains a CUDA-enabled torch build.
 torch>=1.8
 torchvision
+
+# Keep NumPy 1.x for compatibility with older binary wheels on the cluster.
+numpy<2
+opencv-python<4.12
+Pillow
+scipy
 tqdm
+pyyaml
+pydicom
+h5py
+lmdb
+
+# DiffMSR model/runtime extras.
+timm
+einops
+tensorboard
+
+# Optional image-restoration utilities kept from the upstream project. They are
+# not required for the PD/PD-FS MRI training path.
+facexlib>=0.2.0.3
+gfpgan>=0.2.1

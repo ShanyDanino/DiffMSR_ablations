@@ -766,7 +766,8 @@ class DiffMSR_S2(nn.Module):
         timesteps = 4,
         sample_timesteps = None,
         sample_timestep_mode = "uniform",
-	domain_mode='latent_space',
+	    domain_mode='latent_space',
+
         prior_dim = 256 ):
         super(DiffMSR_S2, self).__init__()
 

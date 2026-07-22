@@ -1,13 +1,9 @@
-# general settings
-name: pd_fs_stage2_x4
+name: pd_fs_stage2_x4_prior64_100k
 model_type: DiffMSRS2Model
 scale: 4
 num_gpu: auto
 manual_seed: 0
-
 gt_size: 256
-
-# dataset and data loader settings
 datasets:
   train:
     name: KneePD
@@ -18,16 +14,13 @@ datasets:
     filename_tmpl: '{}'
     io_backend:
       type: disk
-
     gt_size: 256
     use_hflip: true
     use_rot: true
-
     num_worker_per_gpu: 4
     batch_size_per_gpu: 1
     dataset_enlarge_ratio: 1
-    prefetch_mode: ~
-
+    prefetch_mode: null
   val_1:
     name: KneePD
     type: MCSRPairedDataset
@@ -37,92 +30,98 @@ datasets:
     filename_tmpl: '{}'
     io_backend:
       type: disk
-
-# network structures
 network_g:
   type: DiffMSR_S2
   n_encoder_res: 9
   inp_channels: 2
   out_channels: 2
   dim: 32
-  num_blocks: [6,6,6,6]
+  num_blocks:
+  - 6
+  - 6
+  - 6
+  - 6
   num_refinement_blocks: 6
-  heads: [4,4,4,4]
+  heads:
+  - 4
+  - 4
+  - 4
+  - 4
   ffn_expansion_factor: 2.2
-  bias: False
+  bias: false
   LayerNorm_type: BiasFree
   n_denoise_res: 1
   linear_start: 0.1
   linear_end: 0.99
   timesteps: 8
-  prior_dim: 256
-
+  prior_dim: 64
 network_S1:
   type: DiffMSR_S1
   n_encoder_res: 9
   inp_channels: 2
   out_channels: 2
   dim: 32
-  num_blocks: [6,6,6,6]
+  num_blocks:
+  - 6
+  - 6
+  - 6
+  - 6
   num_refinement_blocks: 6
-  heads: [4,4,4,4]
+  heads:
+  - 4
+  - 4
+  - 4
+  - 4
   ffn_expansion_factor: 2.2
-  bias: False
+  bias: false
   LayerNorm_type: BiasFree
-  prior_dim: 256
-
-# path
+  prior_dim: 64
 path:
-  pretrain_network_g: experiments/pd_fs_stage1_x4/models/net_g_330000.pth
-  pretrain_network_S1: experiments/pd_fs_stage1_x4/models/net_g_330000.pth
+  pretrain_network_g: experiments/pd_fs_stage1_x4_prior64_100k/models/net_g_latest.pth
+  pretrain_network_S1: experiments/pd_fs_stage1_x4_prior64_100k/models/net_g_latest.pth
   param_key_g: params_ema
   strict_load_g: false
-  resume_state: ~
+  resume_state: null
   ignore_resume_networks: network_S1
-
-# training settings
 train:
   ema_decay: 0.999
-
   optim_g:
     type: Adam
-    lr: !!float 2e-4
+    lr: 0.0002
     weight_decay: 0
-    betas: [0.9, 0.99]
-
+    betas:
+    - 0.9
+    - 0.99
   scheduler:
     type: MultiStepLR
-    milestones: [250000,400000,450000,475000]
+    milestones:
+    - 250000
+    - 400000
+    - 450000
+    - 475000
     gamma: 0.5
-
-  total_iter: 500000
+  total_iter: 100000
   warmup_iter: -1
-
   encoder_iter: 0
-  lr_encoder: !!float 2e-4
-  lr_sr: !!float 2e-4
+  lr_encoder: 0.0002
+  lr_sr: 0.0002
   gamma_encoder: 0.1
   gamma_sr: 0.5
   lr_decay_encoder: 30000
   lr_decay_sr: 300000
-
   pixel_opt:
     type: L1Loss
     loss_weight: 1.0
     reduction: mean
-
   kd_opt:
     type: KDLoss
     loss_weight: 1
     temperature: 0.15
-
-# validation settings
 val:
   window_size: 8
   skip_initial: true
-  val_freq: !!float 1e4
+  val_freq: 999999.0
   save_img: false
-
   metrics:
     psnr:
       type: calculate_psnr
@@ -132,17 +131,13 @@ val:
       type: calculate_ssim
       crop_border: 0
       test_y_channel: true
-
-# logging settings
 logger:
   print_freq: 100
-  save_checkpoint_freq: !!float 5e3
+  save_checkpoint_freq: 50000.0
   use_tb_logger: true
   wandb:
-    project: ~
-    resume_id: ~
-
-# dist training settings
+    project: null
+    resume_id: null
 dist_params:
   backend: nccl
   port: 29500

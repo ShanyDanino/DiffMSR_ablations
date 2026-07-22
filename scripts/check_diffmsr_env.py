@@ -14,15 +14,20 @@ REQUIRED_MODULES = [
     "tqdm",
     "scipy",
     "pydicom",
+    "lmdb",
     "timm",
     "yaml",
     "einops",
     "tensorboard",
+    "basicsr",
+    "basicsr.data.degradations",
+    "ldm.ddpm",
 ]
 
 OPTIONAL_MODULES = [
     "facexlib",
     "gfpgan",
+    "h5py",
 ]
 
 
@@ -52,6 +57,10 @@ def main() -> None:
     print("torch_cuda", torch.version.cuda)
     print("cuda_available", torch.cuda.is_available())
     print("cuda_device_count", torch.cuda.device_count())
+
+    import basicsr
+
+    print("basicsr", getattr(basicsr, "__file__", "unknown"))
     print("imports ok")
 
 
