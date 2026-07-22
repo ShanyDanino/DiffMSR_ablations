@@ -33,6 +33,8 @@ export CPUS=4
 
 ## 1. Prepare The Dataset
 
+We used the Knee MRI dataset that is a part of the fast MRI bundle (second batch). The database is available to download here: https://fastmri.med.nyu.edu/
+
 The preparation wrapper accepts either an extracted DICOM database folder or a supported archive.
 
 ```bash
