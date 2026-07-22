@@ -28,10 +28,10 @@ elif [[ "$DOMAIN_MODE" == "latent_space" ]]; then
         esac
     elif [[ "$TIMESTEPS" != "4" ]]; then
         case "$TIMESTEPS" in
-            1) YAML_FILE="timesteps_steps1_stage2_100k.yml" ;;
-            2) YAML_FILE="timesteps_steps2_stage2_100k.yml" ;;
-            6) YAML_FILE="timesteps_steps6_stage2_100k.yml" ;;
-            8) YAML_FILE="timesteps_steps8_stage2_100k.yml" ;;
+            1) YAML_FILE="timesteps_steps1_stage1_100k.yml" ;;
+            2) YAML_FILE="timesteps_steps2_stage1_100k.yml" ;;
+            6) YAML_FILE="timesteps_steps6_stage1_100k.yml" ;;
+            8) YAML_FILE="timesteps_steps8_stage1_100k.yml" ;;
             *) echo "Error: No matching YAML file for timesteps='${TIMESTEPS}'"; exit 1 ;;
         esac
     else
