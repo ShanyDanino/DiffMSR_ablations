@@ -85,6 +85,36 @@ CUDA_VISIBLE_DEVICES="$GPU_ID" PYTHONPATH="$PWD" \
   --launcher none
 ```
 
+## Simple Train/Test Scripts
+
+For the baseline run, the shortest path is:
+
+```bash
+GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" bash train_S1.sh
+GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" bash train_S2.sh
+GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" bash test.sh
+```
+
+The defaults are:
+
+```text
+train_S1.sh -> options/pd_fs_ablation/train/baseline_stage1_prior256_500k.yml
+train_S2.sh -> options/pd_fs_ablation/train/baseline_stage2_prior256_500k.yml
+test.sh     -> options/pd_fs_ablation/test/baseline_prior256_500k.yml
+```
+
+Use `OPT=...` to run any exact ablation YAML:
+
+```bash
+OPT=options/pd_fs_ablation/train/timesteps_steps4_stage2_100k.yml \
+  GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" bash train_S2.sh
+
+OPT=options/pd_fs_ablation/test/timesteps_steps4_100k.yml \
+  GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" bash test.sh
+```
+
+These scripts run fixed YAML files. Use the wrapper scripts below when you need to regenerate YAMLs for a different dataset root, iteration count, denoising-step count, or latent size.
+
 ## Reproduce Experiments
 
 ### Experiment 1: Denoising Steps
@@ -208,6 +238,32 @@ This section is reserved for the partner experiment comparing DiffMSR's latent-s
 | --- | --- | --- | ---: | ---: |
 | latent-space diffusion | `baseline_stage1_prior256_500k.yml` + `baseline_stage2_prior256_500k.yml` | `baseline_prior256_500k.yml` | 30.5910 | 0.8473 |
 | image-space diffusion | `train_S1_image.yml` + `train_S2_image.yml` | `test_image.yml` | 30.3210 | 0.8413 |
+
+To generate the latent-vs-image-space comparison figures, first run the image-space model test so it creates a DiffMSR-style result folder:
+
+```text
+results/pd_fs_test_image_space/visualization/*.mat
+```
+
+The `.mat` file must contain `recon` and `gt` arrays in the same validation-slice order as `mri_data_complex/mc_knee_pd_fs/valid/`. Then run:
+
+```bash
+"$PYTHON_BIN" scripts/visualize_pd_fs_ablation_results.py \
+  --experiments space \
+  --space-models latent=pd_fs_test_baseline_prior256_500k,image=pd_fs_test_image_space \
+  --top-n 5 \
+  --middle-slice-fraction 0.6
+```
+
+This writes:
+
+```text
+analysis_outputs/pd_fs_ablation/metrics_space.png
+analysis_outputs/pd_fs_ablation/space_examples/
+analysis_outputs/pd_fs_ablation/selected_space_examples.csv
+```
+
+If her run name is different, replace `pd_fs_test_image_space` with the folder name under `results/`.
 
 ## Test And Figures
 
