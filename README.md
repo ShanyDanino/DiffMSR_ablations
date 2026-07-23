@@ -137,7 +137,7 @@ nohup env GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
 
 ### Experiment B: Denoising Steps
 
-This ablation retrains only Stage 2. All runs reuse the same Stage 1 checkpoint:
+This ablation retrains only Stage 2. All runs reuse the same Stage 1 checkpoint created in Experiment A:
 
 ```text
 experiments/pd_fs_stage1_x4/models/net_g_latest.pth
