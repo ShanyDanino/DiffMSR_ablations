@@ -341,6 +341,7 @@ class TransformerBlock(nn.Module):
                  act_layer=nn.GELU,
                  norm_layer=nn.LayerNorm,
                  domain_mode='latent_space',
+				prior_dim=256,):
         super(TransformerBlock, self).__init__()
 
         self.dim = dim
