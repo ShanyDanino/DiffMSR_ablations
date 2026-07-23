@@ -140,7 +140,7 @@ nohup env GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
 This ablation retrains only Stage 2. All runs reuse the same Stage 1 checkpoint:
 
 ```text
-experiments/pd_fs_stage1_x4/models/net_g_330000.pth
+experiments/pd_fs_stage1_x4/models/net_g_latest.pth
 ```
 
 Sequential command:
