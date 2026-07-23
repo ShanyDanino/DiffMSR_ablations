@@ -68,6 +68,22 @@ train/train_S2_image.yml
 test/test_image.yml
 ```
 
+Run order:
+
+```bash
+GPU_ID=3 PYTHON_BIN=/opt/miniconda3/bin/python \
+  OPT=options/pd_fs_ablation/train/train_S1_image.yml \
+  bash train_S1.sh
+
+GPU_ID=3 PYTHON_BIN=/opt/miniconda3/bin/python \
+  OPT=options/pd_fs_ablation/train/train_S2_image.yml \
+  bash train_S2.sh
+
+GPU_ID=3 PYTHON_BIN=/opt/miniconda3/bin/python \
+  OPT=options/pd_fs_ablation/test/test_image.yml \
+  bash test.sh
+```
+
 ## Running One YAML
 
 ```bash

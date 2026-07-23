@@ -212,12 +212,40 @@ options/pd_fs_ablation/train/train_S2_image.yml
 options/pd_fs_ablation/test/test_image.yml
 ```
 
-Fill in the final image-space result here when it is finalized:
+To reproduce the image-space run, train Stage 1, then Stage 2, then test:
+
+```bash
+nohup env GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
+  OPT=options/pd_fs_ablation/train/train_S1_image.yml \
+  bash train_S1.sh > logs/image_space_s1.nohup.log 2>&1 &
+```
+
+```bash
+nohup env GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
+  OPT=options/pd_fs_ablation/train/train_S2_image.yml \
+  bash train_S2.sh > logs/image_space_s2.nohup.log 2>&1 &
+```
+
+```bash
+nohup env GPU_ID="$GPU_ID" PYTHON_BIN="$PYTHON_BIN" \
+  OPT=options/pd_fs_ablation/test/test_image.yml \
+  bash test.sh > logs/image_space_test.nohup.log 2>&1 &
+```
+
+The test command expects the Stage 2 checkpoint at:
+
+```text
+experiments/Image_Space_DiffMSR_train_S2/models/net_g_latest.pth
+```
+
+If the checkpoint was received externally, copy it to that path and run only the test command above; retraining is not required just to generate comparison images.
+
+Reported latent-space vs image-space result:
 
 | Variant | Training YAML | Test YAML | PSNR | SSIM |
 | --- | --- | --- | ---: | ---: |
 | latent-space diffusion | baseline Stage 1 + baseline Stage 2 | `baseline_prior256_500k.yml` | 30.5910 | 0.8473 |
-| image-space diffusion | TODO | TODO | TODO | TODO |
+| image-space diffusion | `train_S1_image.yml` + `train_S2_image.yml` | `test_image.yml` | 30.3210 | 0.8413 |
 
 ## 4. Generate Figures
 
@@ -254,12 +282,11 @@ analysis_outputs/pd_fs_ablation/compute_time_latent.png
 analysis_outputs/pd_fs_ablation/compute_time_timesteps.png
 ```
 
-For the latent-vs-image-space comparison, make sure the image-space test writes a result folder such as `results/pd_fs_test_image_space/visualization/*.mat`, then run:
+For the latent-vs-image-space comparison, make sure the image-space test writes `results/Image_Space_DiffMSR_test/visualization/*.mat`, then run:
 
 ```bash
 "$PYTHON_BIN" scripts/visualize_pd_fs_ablation_results.py \
   --experiments space \
-  --space-models latent=pd_fs_test_baseline_prior256_500k,image=pd_fs_test_image_space \
   --top-n 5 \
   --middle-slice-fraction 0.6
 ```

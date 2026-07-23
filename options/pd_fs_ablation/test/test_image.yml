@@ -1,4 +1,4 @@
-# One-slice PD / PD fat-sat test for the completed stage-2 model.
+# Held-out PD / PD fat-sat test for the completed image-space Stage-2 model.
 name: Image_Space_DiffMSR_test
 model_type: DiffMSRS2Model
 scale: 4

@@ -22,7 +22,7 @@ The result .mat files are large, so they are loaded one model at a time.
 For a custom latent-space vs image-space comparison, pass:
 
   --experiments space \
-  --space-models latent=pd_fs_test_baseline_prior256_500k,image=pd_fs_test_image_space
+  --space-models latent=pd_fs_test_baseline_prior256_500k,image=Image_Space_DiffMSR_test
 
 Each run must have results/<run_name>/visualization/*.mat containing recon and gt
 arrays in the same validation-slice order.
@@ -80,6 +80,12 @@ STEP_MODELS = [
 ]
 
 BASELINE_MODEL = ModelSpec("baseline", "baseline 256", 256, "pd_fs_test_baseline_prior256_500k")
+DEFAULT_SPACE_MODELS_RAW = "latent=pd_fs_test_baseline_prior256_500k,image=Image_Space_DiffMSR_test"
+REPORTED_METRICS = {
+    # Reported by the image-space experiment owner. A real test log, if present,
+    # takes precedence over this fallback.
+    "Image_Space_DiffMSR_test": (30.3210, 0.8413),
+}
 
 
 def parse_model_specs(raw: str, experiment: str) -> list[ModelSpec]:
@@ -130,12 +136,16 @@ def latest_log_path(run_name: str) -> Path | None:
 def parse_test_metrics(run_name: str) -> tuple[float | None, float | None]:
     log_path = latest_log_path(run_name)
     if log_path is None:
-        return None, None
+        return REPORTED_METRICS.get(run_name, (None, None))
     text = log_path.read_text(encoding="utf-8", errors="replace")
     psnr_matches = re.findall(r"# psnr:\s*([0-9.]+)", text)
     ssim_matches = re.findall(r"# ssim:\s*([0-9.]+)", text)
     psnr = float(psnr_matches[-1]) if psnr_matches else None
     ssim = float(ssim_matches[-1]) if ssim_matches else None
+    if (psnr is None or ssim is None) and run_name in REPORTED_METRICS:
+        fallback_psnr, fallback_ssim = REPORTED_METRICS[run_name]
+        psnr = fallback_psnr if psnr is None else psnr
+        ssim = fallback_ssim if ssim is None else ssim
     return psnr, ssim
 
 
@@ -576,7 +586,8 @@ def main() -> None:
         default="",
         help=(
             "Comma-separated custom models for latent-vs-image-space comparison, "
-            "formatted as label=run_name,label=run_name."
+            "formatted as label=run_name,label=run_name. If omitted with "
+            "--experiments space, uses the reported latent/image-space comparison."
         ),
     )
     parser.add_argument(
@@ -589,7 +600,11 @@ def main() -> None:
     out_dir = PROJECT_ROOT / args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    space_specs = parse_model_specs(args.space_models, "space")
+    experiments = {item.strip() for item in args.experiments.split(",") if item.strip()}
+    space_models_raw = args.space_models
+    if "space" in experiments and not space_models_raw.strip():
+        space_models_raw = DEFAULT_SPACE_MODELS_RAW
+    space_specs = parse_model_specs(space_models_raw, "space")
     rows = collect_metric_rows(space_specs)
     write_metric_csv(out_dir, rows)
     plot_experiment_metrics(out_dir, "Latent vector size ablation", "prior_dim", LATENT_MODELS, rows, "metrics_latent.png")
@@ -601,7 +616,7 @@ def main() -> None:
         rows,
         "metrics_timesteps.png",
     )
-    if space_specs:
+    if "space" in experiments and space_specs:
         plot_experiment_metrics(
             out_dir,
             args.space_title,
@@ -628,7 +643,6 @@ def main() -> None:
         f"from the middle {args.middle_slice_fraction:.0%} of each scan."
     )
 
-    experiments = {item.strip() for item in args.experiments.split(",") if item.strip()}
     if "latent" in experiments:
         latent_specs = [spec for spec in LATENT_MODELS if has_result_mat(spec.run_name)]
         if len(latent_specs) != len(LATENT_MODELS):
