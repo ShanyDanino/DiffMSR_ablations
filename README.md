@@ -318,6 +318,14 @@ Best PSNR was 8 steps. Four steps was essentially tied and is the original DiffM
 
 The best 100k latent-size result was `prior_dim=128`, but the differences among 64/128/256 were small.
 
+### Image space, 500k Stage 1 + 500k Stage 2
+
+| model | PSNR | SSIM |
+| --- | ---: | ---: |
+| Image space prior, full Stage 2 | 30.3210 | 0.8413 |
+
+The results support our conjecture: other than being more efficient, the latent space achieves better results than an image-space representation.
+
 ### Full Baseline
 
 | model | PSNR | SSIM |
